@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>read_vi_description — Prototype</title>
+<style>
+  body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; max-width: 900px; margin: 40px auto; padding: 0 24px; color: #1e1e1e; line-height: 1.7; }
+  h1 { border-bottom: 2px solid #0078d4; padding-bottom: 8px; }
+  h2 { border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 40px; }
+  h3 { margin-top: 28px; }
+  code { background: #f3f3f3; padding: 2px 6px; border-radius: 3px; font-size: 0.93em; }
+  pre { background: #f6f8fa; border: 1px solid #ddd; border-radius: 6px; padding: 16px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
+  th { background: #f0f4f8; }
+  .note { background: #fff8e1; border-left: 4px solid #f9a825; padding: 10px 16px; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<h1>read_vi_description — Prototype</h1>
+
+<p>本 prototype 从 <a href="https://github.com/NEVSTOP-LAB/labview-vi-props-skill">labview-vi-props-skill</a>
+中提炼了核心经验，实现了一个专注于<strong>跨版本稳定读取 LabVIEW VI Description</strong> 的独立脚本对。</p>
+
+<h2>文件结构</h2>
+<pre><code>prototype/
+└── scripts/
+    ├── read_vi_version.py              # 读取 VI 保存版本（纯文件头，无需 LabVIEW）
+    ├── read_vi_description.py          # 读取 VI Description（通过 COM/ActiveX）
+    └── read_vi_description_worker.vbs  # VBScript COM Worker
+</code></pre>
+
+<h2>read_vi_version.py — 读取 VI 版本</h2>
+
+<p><strong>不依赖 LabVIEW 安装，纯文件头解析，跨平台可用。</strong>
+适合在没有 LabVIEW 的环境（CI、服务器）中快速批量检查 VI 版本。</p>
+
+<h3>用法</h3>
+<pre><code># 单文件
+python scripts/read_vi_version.py "C:\path\to\test.vi"
+# 输出: 17.0
+
+# 完整年份格式
+python scripts/read_vi_version.py --year "C:\path\to\test.vi"
+# 输出: 2017.0
+
+# 人类可读描述
+python scripts/read_vi_version.py --describe "C:\path\to\test.vi"
+# 输出: LabVIEW 2017 SP0
+
+# 批量扫描目录（递归）
+python scripts/read_vi_version.py --recursive --year "C:\project\src"
+
+# JSON 输出（适合程序消费）
+python scripts/read_vi_version.py --json --year "C:\path\to\test.vi"
+</code></pre>
+
+<h3>版本号解码规则</h3>
+<p>VI 文件头前 512 字节内有 <code>00 00 00 A0</code> 标记，紧随其后两个字节以 BCD 格式编码版本：</p>
+<pre><code>字节偏移 +4：主版本 BCD  0x17 → 23（十进制）→ 2017 年
+字节偏移 +5：次版本 BCD  0x00 → 0 → SP0，0x03 → 3 → SP3
+</code></pre>
+<table>
+  <tr><th>BCD 字节值</th><th>十进制主版本</th><th>完整年份</th><th>LabVIEW 名称</th></tr>
+  <tr><td>0x14</td><td>14</td><td>2014</td><td>LabVIEW 2014</td></tr>
+  <tr><td>0x17</td><td>17</td><td>2017</td><td>LabVIEW 2017</td></tr>
+  <tr><td>0x20</td><td>20</td><td>2020</td><td>LabVIEW 2020</td></tr>
+  <tr><td>0x25</td><td>25</td><td>2025</td><td>LabVIEW 2025</td></tr>
+</table>
+
+<h3>Python API</h3>
+<pre><code>from scripts.read_vi_version import read_vi_version, describe_version, major_to_year
+
+version = read_vi_version(r"C:\path\to\test.vi")
+# 返回 (17, 0) 或 None（非有效 VI 文件）
+
+if version:
+    major, minor = version
+    print(major_to_year(major))       # 2017
+    print(describe_version(major, minor))  # LabVIEW 2017 SP0
+</code></pre>
+
+<h3>退出码</h3>
+<table>
+  <tr><th>退出码</th><th>含义</th></tr>
+  <tr><td>0</td><td>全部成功</td></tr>
+  <tr><td>2</td><td>文件不存在</td></tr>
+  <tr><td>3</td><td>非有效 VI 文件或读取失败</td></tr>
+</table>
+
+<hr>
+
+<h2>read_vi_description.py — 读取 VI Description（通过 COM）</h2>
+
+<h2>工作原理</h2>
+
+<h3>1. VI 文件头解析 — 自动识别保存版本</h3>
+<p>读取 VI 文件头前 512 字节，查找 <code>00 00 00 A0</code> 标记，
+随后两个字节以 BCD 格式编码主次版本号。例如：</p>
+<pre><code>... 00 00 00 A0 17 00 ...
+                ^^  主版本 BCD = 0x17 → 23（十进制）？
+                    实为 LabVIEW 2017 存储方式：高4位/低4位各表示一位十进制
+</code></pre>
+<p>无需安装 LabVIEW 或调用 COM，即可在毫秒级得到保存版本。</p>
+
+<h3>2. 注册表扫描 — 枚举已安装版本</h3>
+<p>同时读取 <strong>32 位和 64 位</strong>注册表视图：</p>
+<pre><code>HKLM\SOFTWARE\National Instruments\LabVIEW\&lt;major.minor&gt;\Path
+</code></pre>
+<p>对每条路径读取 <code>LabVIEW.exe</code> 的 PE Machine 字段，判断 x86 / x64。</p>
+
+<h3>3. 位数匹配的脚本宿主</h3>
+<p>LabVIEW COM 只能被<strong>相同位数</strong>的进程正常访问：</p>
+<table>
+  <tr><th>目标 LabVIEW</th><th>使用的 cscript.exe</th></tr>
+  <tr><td>x86（32 位）</td><td><code>C:\Windows\SysWOW64\cscript.exe</code></td></tr>
+  <tr><td>x64（64 位）</td><td><code>C:\Windows\System32\cscript.exe</code></td></tr>
+</table>
+<p>Python 本身的位数不影响结果——正确的宿主由 LabVIEW 安装决定。</p>
+
+<h3>4. VBScript Worker 连接流程</h3>
+<ol>
+  <li>清理目标 <code>LabVIEW.exe /Automation</code> 残留进程。</li>
+  <li>以 <code>/Automation</code> 启动目标 <code>LabVIEW.exe</code>。</li>
+  <li>循环调用 <code>CreateObject("LabVIEW.Application")</code>，
+      核对 <code>ApplicationDirectory</code> 与 <code>Version</code> 是否匹配。</li>
+  <li>命中后调用 <code>app.GetVIReference(viPath)</code>，
+      读取 <code>vi.Description</code>。</li>
+  <li>结果以 Base64-UTF-8 编码写入临时响应文件，Python 解码后输出。</li>
+</ol>
+
+<div class="note">
+  <strong>注意：</strong>不会静默回退到无关的活动 COM 实例。
+  若目标版本不匹配则直接报错，避免读到错误版本的缓存属性。
+</div>
+
+<h2>快速开始</h2>
+
+<h3>命令行</h3>
+<pre><code># 自动按 VI 保存版本选择目标 LabVIEW
+python scripts/read_vi_description.py "C:\path\to\test.vi"
+
+# 显式指定版本
+python scripts/read_vi_description.py --labview-version 2017 "C:\path\to\test.vi"
+
+# 同版本双位数并存时，显式指定位数
+python scripts/read_vi_description.py --labview-version 2025 --labview-bitness x64 "C:\path\to\test.vi"
+python scripts/read_vi_description.py --labview-version 2025 --labview-bitness x86 "C:\path\to\test.vi"
+
+# 输出版本选择与命中诊断（写入 stderr）
+python scripts/read_vi_description.py --verbose "C:\path\to\test.vi"
+</code></pre>
+
+<h3>Python API</h3>
+<pre><code>from scripts.read_vi_description import read_description
+
+# 自动版本
+desc = read_description(r"C:\path\to\test.vi")
+
+# 显式版本
+desc = read_description(r"C:\path\to\test.vi", labview_version="2017")
+
+# 显式版本 + 位数
+desc = read_description(r"C:\path\to\test.vi", labview_version=2025, labview_bitness="x64")
+
+print(desc)
+</code></pre>
+
+<h2>参数说明</h2>
+<table>
+  <tr><th>参数</th><th>类型</th><th>说明</th></tr>
+  <tr><td><code>vi_path</code></td><td>str</td><td>VI 文件路径（绝对或相对）</td></tr>
+  <tr><td><code>labview_version</code></td><td>str / int / tuple</td>
+      <td>目标 LabVIEW 版本，支持 <code>2017</code>、<code>17.0</code>、<code>2025.3</code>、<code>(17,0)</code>。省略时自动识别。</td></tr>
+  <tr><td><code>labview_bitness</code></td><td>str</td>
+      <td>目标位数：<code>x86</code>、<code>x64</code>、<code>32</code>、<code>64</code>。省略时优先与当前 Python 进程位数一致。</td></tr>
+  <tr><td><code>--verbose</code></td><td>flag</td>
+      <td>（仅命令行）把版本选择与命中诊断输出到 stderr。</td></tr>
+</table>
+
+<h2>退出码</h2>
+<table>
+  <tr><th>退出码</th><th>含义</th></tr>
+  <tr><td>0</td><td>成功，Description 输出到 stdout</td></tr>
+  <tr><td>2</td><td>VI 文件不存在</td></tr>
+  <tr><td>3</td><td>连接 LabVIEW 失败或读取属性失败</td></tr>
+  <tr><td>4</td><td>参数错误或其他未预期错误</td></tr>
+</table>
+
+<h2>依赖</h2>
+<ul>
+  <li>Python 3.8+（仅标准库，无第三方依赖）</li>
+  <li>Windows 系统（需要 cscript.exe、WScript、ADODB、Msxml2）</li>
+  <li>目标版本的 LabVIEW 已安装且注册了 COM 服务器</li>
+</ul>
+
+<h2>已知边界</h2>
+<ul>
+  <li>仅支持 Windows 平台。</li>
+  <li>仅读取 <code>VI.Description</code>，不做写操作。</li>
+  <li>VI 文件头可以提供保存版本，但不包含 x86/x64 信息；同版本双位数并存时，请显式传 <code>--labview-bitness</code>。</li>
+  <li>若目标 LabVIEW 未安装，脚本直接报错（不静默连接错误版本）。</li>
+</ul>
+
+</body>
+</html>
