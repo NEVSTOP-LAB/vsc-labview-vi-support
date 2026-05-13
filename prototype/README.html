@@ -32,7 +32,9 @@
     ├── read_vi_description.py          # 读取 VI Description（通过 COM/ActiveX）
     ├── read_vi_description_worker.vbs  # VBScript COM Worker（供上脚本调用）
     ├── read_vi_props.py                # 读取 VI 全部可访问属性（通过 COM/ActiveX）
-    └── read_vi_props_worker.vbs        # VBScript COM Worker（供上脚本调用）
+  ├── read_vi_props_worker.vbs        # VBScript COM Worker（供上脚本调用）
+  ├── read_vi_icon.py                 # 直接解析 RSRC 导出 VI 图标（纯文件）
+  └── save_vi_panel_image.py          # 通过 Python + VI Server 导出前/背面板图片
 </code></pre>
 
 <h2>read_vi_version.py — 读取 VI 版本</h2>
@@ -377,6 +379,108 @@ else:
   <li>同版本 x86/x64 并存时，请显式传 <code>--labview-bitness</code>。</li>
   <li>所有属性值均以字符串形式返回（包括 Boolean 和 Number），调用方需自行转换类型。</li>
   <li>不做写操作，属性表中标注 R/W 的属性本版本仅支持读取。</li>
+</ul>
+
+<hr>
+
+<h2>read_vi_icon.py — 导出 VI 图标（纯文件解析）</h2>
+
+<p>该脚本不依赖 LabVIEW、COM 或第三方工具，直接解析 VI 的 RSRC 资源表，提取图标资源并输出为 PNG。</p>
+
+<h3>适用场景</h3>
+<ul>
+  <li>批量提取 VI 图标。</li>
+  <li>CI / 服务器环境下无 LabVIEW 安装时仍可运行。</li>
+  <li>希望避免 COM 连接、宿主位数匹配等环境约束。</li>
+</ul>
+
+<h3>命令行用法</h3>
+<pre><code># 单文件导出
+python scripts/read_vi_icon.py "C:\path\to\test.vi"
+
+# 指定输出路径
+python scripts/read_vi_icon.py "C:\path\to\test.vi" --output "C:\path\to\icon.png"
+
+# 放大倍数
+python scripts/read_vi_icon.py "C:\path\to\test.vi" --scale 8
+
+# 递归扫描目录并批量输出
+python scripts/read_vi_icon.py "C:\path\to\vi-dir" --recursive
+
+# JSON 输出
+python scripts/read_vi_icon.py "C:\path\to\test.vi" --json
+</code></pre>
+
+<h3>输出说明</h3>
+<ul>
+  <li>默认输出 PNG。</li>
+  <li>优先读取彩色图标资源，缺失时回退到单色图标资源。</li>
+  <li>对当前样例 <code>2017.vi</code>、<code>2020.vi</code>、<code>2025.vi</code> 已成功导出图标。</li>
+</ul>
+
+<h3>依赖</h3>
+<ul>
+  <li>Python 3.8+。</li>
+  <li>仅标准库，无第三方依赖。</li>
+</ul>
+
+<h3>已知边界</h3>
+<ul>
+  <li>当前目标是稳定提取常见 VI 图标资源，不覆盖所有潜在 RSRC 变体。</li>
+  <li>若某些 VI 使用非常规图标资源布局，可能需要继续扩展资源解析分支。</li>
+</ul>
+
+<hr>
+
+<h2>save_vi_panel_image.py — 导出前面板 / 背面板图片</h2>
+
+<p>该脚本使用 Python 直接调用 LabVIEW VI Server，对应 Invoke Node 路线，不使用屏幕截图，也不要求把前面板显示到桌面。</p>
+
+<h3>工作方式</h3>
+<table>
+  <tr><th>目标</th><th>实现方式</th><th>是否显示窗口</th></tr>
+  <tr><td>前面板（fp）</td><td><code>OpenFrontPanel(False, Hidden)</code> + <code>GetPanelImage(True, 24)</code></td><td>否</td></tr>
+  <tr><td>背面板（bd）</td><td><code>PrintVIToHTML(... Complete ...)</code> 后提取 <code>*d.png</code></td><td>否</td></tr>
+</table>
+
+<h3>命令行用法</h3>
+<pre><code># 导出前面板
+python scripts/save_vi_panel_image.py "C:\path\to\test.vi" --panel fp
+
+# 导出背面板
+python scripts/save_vi_panel_image.py "C:\path\to\test.vi" --panel bd
+
+# 指定输出文件
+python scripts/save_vi_panel_image.py "C:\path\to\test.vi" --panel fp --output "C:\path\to\panel.png"
+
+# 显式指定 LabVIEW 版本和位数
+python scripts/save_vi_panel_image.py "C:\path\to\test.vi" --panel fp --labview-version 2025 --labview-bitness x64
+
+# 输出连接诊断
+python scripts/save_vi_panel_image.py "C:\path\to\test.vi" --panel fp --verbose
+</code></pre>
+
+<h3>依赖</h3>
+<ul>
+  <li>Windows。</li>
+  <li>已安装目标版本的 LabVIEW，并注册 COM 服务器。</li>
+  <li>Python 3.8+。</li>
+  <li><code>pywin32</code>。</li>
+  <li><code>Pillow</code>。</li>
+</ul>
+
+<h3>已验证结果</h3>
+<ul>
+  <li>样例 <code>2025.vi</code> 已成功通过隐藏前面板 + <code>GetPanelImage</code> 导出前面板图片。</li>
+  <li>LabVIEW 2025 自带示例 VI 已成功通过 <code>PrintVIToHTML</code> 导出背面板图片。</li>
+  <li>样例 <code>2025.vi</code> 的背面板导出会返回“未生成目标面板图像”，与其空白 / 极简 diagram 表现一致。</li>
+</ul>
+
+<h3>已知边界</h3>
+<ul>
+  <li>当前纯 Python 直连 COM 方案要求 Python 与目标 LabVIEW 位数一致；例如 x64 Python 只能稳定连接 x64 LabVIEW。</li>
+  <li>背面板导出依赖 LabVIEW 的 HTML 导出结果。若 VI 的 block diagram 为空白或极简，LabVIEW 可能不会生成 <code>*d.png</code>。</li>
+  <li>前面板导出虽然不显示窗口，但本质上仍会通过 VI Server 打开目标 VI 的 front panel 对象。</li>
 </ul>
 
 </body>
