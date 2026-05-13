@@ -1,0 +1,282 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  prepare-deps:
+    name: 预热 Node 依赖缓存
+    runs-on: ubuntu-latest
+    outputs:
+      deps_cache_key: ${{ steps.deps-cache-key.outputs.key }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 生成依赖缓存键
+        id: deps-cache-key
+        run: echo "key=ubuntu-node${{ env.NODE_VERSION }}-${{ hashFiles('package-lock.json') }}" >> "$GITHUB_OUTPUT"
+
+      - name: 恢复 node_modules 缓存
+        id: restore-node-modules
+        uses: actions/cache/restore@v4
+        with:
+          path: node_modules
+          key: ${{ steps.deps-cache-key.outputs.key }}
+
+      - name: 安装依赖
+        if: steps.restore-node-modules.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: 保存 node_modules 缓存
+        if: steps.restore-node-modules.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: node_modules
+          key: ${{ steps.deps-cache-key.outputs.key }}
+
+  # ──────────────────────────────────────────────────────────────────────────
+  lint-and-typecheck:
+    name: 代码检查
+    runs-on: ubuntu-latest
+    needs: [prepare-deps]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 恢复 node_modules 缓存
+        uses: actions/cache/restore@v4
+        with:
+          path: node_modules
+          key: ${{ needs.prepare-deps.outputs.deps_cache_key }}
+          fail-on-cache-miss: true
+
+      - name: 类型检查
+        run: npm run check-types
+
+      - name: ESLint 代码风格检查
+        run: npm run lint
+
+  # ──────────────────────────────────────────────────────────────────────────
+  extension-tests:
+    name: 扩展集成测试
+    runs-on: ubuntu-latest
+    needs: [prepare-deps]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 恢复 node_modules 缓存
+        uses: actions/cache/restore@v4
+        with:
+          path: node_modules
+          key: ${{ needs.prepare-deps.outputs.deps_cache_key }}
+          fail-on-cache-miss: true
+
+      - name: 安装 Xvfb（虚拟显示器）
+        run: sudo apt-get install -y xvfb
+
+      - name: 运行完整扩展测试（含 VS Code，pretest 自动编译）
+        run: xvfb-run -a npm test
+
+  # ──────────────────────────────────────────────────────────────────────────
+  build-vsix:
+    name: 构建 VSIX 扩展包
+    runs-on: ubuntu-latest
+    needs: [prepare-deps, lint-and-typecheck, extension-tests]
+    outputs:
+      build_version: ${{ steps.version.outputs.build_version }}
+      artifact_name: labview-vi-support-${{ steps.version.outputs.build_version }}-vsix
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 恢复 node_modules 缓存
+        uses: actions/cache/restore@v4
+        with:
+          path: node_modules
+          key: ${{ needs.prepare-deps.outputs.deps_cache_key }}
+          fail-on-cache-miss: true
+
+      - name: 计算带 build number 的版本号
+        id: version
+        run: |
+          YEAR=$(date -u +%Y)
+          MONTH=$(date -u +%-m)
+          BUILD_VERSION="${YEAR}.${MONTH}.${{ github.run_number }}"
+          echo "build_version=${BUILD_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: 打包 VSIX（vsce package）
+        # --no-dependencies：所有依赖均为 devDependencies，esbuild 已将运行时代码
+        # 打包至 dist/extension.js，无需在 VSIX 中内嵌 node_modules
+        # 版本号格式为 年.月.build（三段式 semver），例如 2026.5.42
+        # --no-update-package-json：仅将版本号注入 VSIX 包，不修改 package.json
+        run: npx @vscode/vsce@3.7.1 package ${{ steps.version.outputs.build_version }} --no-dependencies --no-update-package-json
+
+      - name: 上传 VSIX Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: labview-vi-support-${{ steps.version.outputs.build_version }}-vsix
+          path: '*.vsix'
+          retention-days: 30
+
+  # ──────────────────────────────────────────────────────────────────────────
+  validate-vsix:
+    name: 验证 VSIX 可正常被 VS Code 加载 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: [build-vsix]
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 下载 VSIX Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-vsix.outputs.artifact_name }}
+
+      - name: 验证 VSIX 结构与 manifest
+        shell: bash
+        run: |
+          VSIX=$(ls *.vsix | head -1)
+          echo "验证 VSIX: $VSIX"
+
+          # 1. ZIP 完整性检查
+          unzip -t "$VSIX"
+          echo "✓ ZIP 结构完整"
+
+          # 2. 解析 extension/package.json，验证版本号与必需字段
+          unzip -p "$VSIX" extension/package.json > ./vsix-pkg.json
+          node << 'JSEOF'
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('./vsix-pkg.json', 'utf8'));
+
+          // 版本号须为有效 semver
+          const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|[0-9A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
+          if (!semverPattern.test(pkg.version)) {
+            console.error('FAILED: version "' + pkg.version + '" is not valid semver.');
+            process.exit(1);
+          }
+          console.log('✓ 版本号合法: ' + pkg.version);
+
+          // VS Code manifest 必需字段
+          for (const field of ['name', 'publisher', 'engines']) {
+            if (!pkg[field]) {
+              console.error('FAILED: package.json missing required field: ' + field);
+              process.exit(1);
+            }
+          }
+          if (!pkg.engines.vscode) {
+            console.error('FAILED: package.json missing engines.vscode');
+            process.exit(1);
+          }
+          console.log('✓ VS Code 必需字段完整 (name, publisher, engines.vscode)');
+
+          // 本扩展必须字段
+          for (const field of ['main', 'contributes']) {
+            if (!pkg[field]) {
+              console.error('FAILED: package.json missing extension field: ' + field);
+              process.exit(1);
+            }
+          }
+          console.log('✓ 扩展必需字段完整 (main, contributes)');
+          JSEOF
+
+          # 3. 验证主入口文件存在于 VSIX 中
+          MAIN=$(node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('./vsix-pkg.json','utf8'));process.stdout.write(p.main||'')")
+          MAIN_IN_VSIX="extension/${MAIN#./}"
+          unzip -p "$VSIX" "$MAIN_IN_VSIX" > /dev/null
+          echo "✓ 主入口文件存在: $MAIN_IN_VSIX"
+
+          echo "✓ VSIX 验证通过，可正常被 VS Code 加载"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  upload-to-release:
+    name: 上传 VSIX 到 GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-vsix, validate-vsix]
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: 下载 VSIX Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-vsix.outputs.artifact_name }}
+
+      - name: 上传 VSIX 到 GitHub Release
+        run: |
+          VSIX=$(ls *.vsix | head -1)
+          TAG="${{ github.ref_name }}"
+          echo "上传 VSIX: $VSIX → Release $TAG"
+          if gh release view "$TAG" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$VSIX" --clobber --repo "${{ github.repository }}"
+          else
+            gh release create "$TAG" "$VSIX" \
+              --title "$TAG" \
+              --generate-notes \
+              --repo "${{ github.repository }}"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  # ──────────────────────────────────────────────────────────────────────────
+  publish-to-marketplace:
+    name: 发布到 VS Code Marketplace
+    runs-on: ubuntu-latest
+    needs: [build-vsix, validate-vsix]
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 下载 VSIX Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-vsix.outputs.artifact_name }}
+
+      - name: 发布到 VS Code Marketplace
+        run: |
+          VSIX=$(ls *.vsix | head -1)
+          echo "发布 VSIX: $VSIX"
+          npx @vscode/vsce@3.7.1 publish --packagePath "$VSIX" --pat "${{ secrets.VSCE_PAT }}"

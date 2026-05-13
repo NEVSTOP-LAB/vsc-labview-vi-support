@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Outer background -->
+  <rect width="128" height="128" rx="14" fill="#1A2B3C"/>
+
+  <!-- Inner panel with orange border ring -->
+  <rect x="4" y="4" width="120" height="120" rx="12" fill="#FF8C00"/>
+  <rect x="7" y="7" width="114" height="114" rx="10" fill="#243447"/>
+
+  <!-- Connector terminals — top row (blue) -->
+  <rect x="10" y="10" width="22" height="13" rx="2" fill="#4A90D9"/>
+  <rect x="53" y="10" width="22" height="13" rx="2" fill="#4A90D9"/>
+  <rect x="96" y="10" width="22" height="13" rx="2" fill="#4A90D9"/>
+
+  <!-- Connector terminals — left column -->
+  <rect x="10" y="46" width="13" height="15" rx="2" fill="#4A90D9"/>
+  <rect x="10" y="67" width="13" height="15" rx="2" fill="#4A90D9"/>
+
+  <!-- Connector terminals — right column -->
+  <rect x="105" y="46" width="13" height="15" rx="2" fill="#4A90D9"/>
+  <rect x="105" y="67" width="13" height="15" rx="2" fill="#4A90D9"/>
+
+  <!-- Connector terminals — bottom row -->
+  <rect x="10" y="105" width="22" height="13" rx="2" fill="#4A90D9"/>
+  <rect x="53" y="105" width="22" height="13" rx="2" fill="#4A90D9"/>
+  <rect x="96" y="105" width="22" height="13" rx="2" fill="#4A90D9"/>
+
+  <!-- "VI" pixel-art text in orange -->
+  <text x="64" y="77"
+        font-family="'Arial Black', Impact, sans-serif"
+        font-size="38"
+        font-weight="900"
+        fill="#FF8C00"
+        text-anchor="middle"
+        letter-spacing="2">VI</text>
+</svg>
