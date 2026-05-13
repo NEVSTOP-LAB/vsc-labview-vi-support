@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>read_vi_description — Prototype</title>
+<title>LabVIEW VI Props — Prototype</title>
 <style>
   body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; max-width: 900px; margin: 40px auto; padding: 0 24px; color: #1e1e1e; line-height: 1.7; }
   h1 { border-bottom: 2px solid #0078d4; padding-bottom: 8px; }
@@ -20,17 +20,19 @@
 </head>
 <body>
 
-<h1>read_vi_description — Prototype</h1>
+<h1>LabVIEW VI Props — Prototype</h1>
 
 <p>本 prototype 从 <a href="https://github.com/NEVSTOP-LAB/labview-vi-props-skill">labview-vi-props-skill</a>
-中提炼了核心经验，实现了一个专注于<strong>跨版本稳定读取 LabVIEW VI Description</strong> 的独立脚本对。</p>
+中提炼了核心经验，实现了一组<strong>跨版本稳定读取 LabVIEW VI 属性</strong>的独立脚本。</p>
 
 <h2>文件结构</h2>
 <pre><code>prototype/
 └── scripts/
     ├── read_vi_version.py              # 读取 VI 保存版本（纯文件头，无需 LabVIEW）
     ├── read_vi_description.py          # 读取 VI Description（通过 COM/ActiveX）
-    └── read_vi_description_worker.vbs  # VBScript COM Worker
+    ├── read_vi_description_worker.vbs  # VBScript COM Worker（供上脚本调用）
+    ├── read_vi_props.py                # 读取 VI 全部可访问属性（通过 COM/ActiveX）
+    └── read_vi_props_worker.vbs        # VBScript COM Worker（供上脚本调用）
 </code></pre>
 
 <h2>read_vi_version.py — 读取 VI 版本</h2>
@@ -203,6 +205,178 @@ print(desc)
   <li>仅读取 <code>VI.Description</code>，不做写操作。</li>
   <li>VI 文件头可以提供保存版本，但不包含 x86/x64 信息；同版本双位数并存时，请显式传 <code>--labview-bitness</code>。</li>
   <li>若目标 LabVIEW 未安装，脚本直接报错（不静默连接错误版本）。</li>
+</ul>
+
+<hr>
+
+<h2>read_vi_props.py — 读取 VI 全部属性（通过 COM）</h2>
+
+<p>在 <code>read_vi_description.py</code> 的基础上扩展，使用相同的版本识别、COM 连接和位数匹配机制，
+能够一次性读取 VI 的所有 COM 可访问属性。
+单个属性读取失败（例如属性在该版本中不存在）不会导致整体失败，所有其他属性仍会正常返回。</p>
+
+<h3>可读属性总览</h3>
+
+<table>
+  <tr>
+    <th>属性名</th>
+    <th>COM 访问器</th>
+    <th>类型</th>
+    <th>读写</th>
+    <th>说明</th>
+    <th>版本要求</th>
+  </tr>
+  <tr><td><code>Name</code></td><td><code>vi.Name</code></td><td>String</td><td>R</td><td>VI 文件名（不含路径）</td><td>全版本</td></tr>
+  <tr><td><code>Path</code></td><td><code>vi.Path</code></td><td>String</td><td>R</td><td>VI 文件完整路径</td><td>全版本</td></tr>
+  <tr><td><code>LVVersion</code></td><td><code>vi.LVVersion</code></td><td>String</td><td>R</td><td>最近保存时的 LabVIEW 版本字符串</td><td>全版本</td></tr>
+  <tr><td><code>Description</code></td><td><code>vi.Description</code></td><td>String</td><td>R/W</td><td>VI 描述（属性对话框说明文字）</td><td>全版本</td></tr>
+  <tr><td><code>HistoryText</code></td><td><code>vi.HistoryText</code></td><td>String</td><td>R/W</td><td>修订历史日志文本</td><td>全版本</td></tr>
+  <tr><td><code>PrintHeader</code></td><td><code>vi.PrintHeader</code></td><td>String</td><td>R/W</td><td>打印页眉</td><td>全版本</td></tr>
+  <tr><td><code>PrintFooter</code></td><td><code>vi.PrintFooter</code></td><td>String</td><td>R/W</td><td>打印页脚</td><td>全版本</td></tr>
+  <tr><td><code>FPTitle</code></td><td><code>vi.FP.Title</code></td><td>String</td><td>R/W</td><td>前面板窗口标题</td><td>全版本</td></tr>
+  <tr><td><code>HasChanges</code></td><td><code>vi.HasChanges</code></td><td>Boolean</td><td>R</td><td>是否有未保存的修改</td><td>全版本</td></tr>
+  <tr><td><code>Protected</code></td><td><code>vi.Protected</code></td><td>Boolean</td><td>R</td><td>框图是否已加密保护</td><td>全版本</td></tr>
+  <tr><td><code>IsRunning</code></td><td><code>vi.IsRunning</code></td><td>Boolean</td><td>R</td><td>当前是否正在运行</td><td>全版本</td></tr>
+  <tr><td><code>FPOpen</code></td><td><code>vi.FP.Open</code></td><td>Boolean</td><td>R</td><td>前面板窗口是否当前打开</td><td>全版本</td></tr>
+  <tr><td><code>AllowDebugging</code></td><td><code>vi.AllowDebugging</code></td><td>Boolean</td><td>R/W</td><td>允许调试</td><td>全版本</td></tr>
+  <tr><td><code>BreakOnError</code></td><td><code>vi.BreakOnError</code></td><td>Boolean</td><td>R/W</td><td>出错时暂停执行</td><td>全版本</td></tr>
+  <tr><td><code>SuspendWhenCalled</code></td><td><code>vi.SuspendWhenCalled</code></td><td>Boolean</td><td>R/W</td><td>被调用时挂起</td><td>全版本</td></tr>
+  <tr><td><code>ShowFPOnCall</code></td><td><code>vi.ShowFPOnCall</code></td><td>Boolean</td><td>R/W</td><td>被调用时显示前面板</td><td>全版本</td></tr>
+  <tr><td><code>CloseAfterCall</code></td><td><code>vi.CloseAfterCall</code></td><td>Boolean</td><td>R/W</td><td>调用完毕后关闭前面板</td><td>全版本</td></tr>
+  <tr><td><code>Scalable</code></td><td><code>vi.Scalable</code></td><td>Boolean</td><td>R/W</td><td>前面板是否可缩放</td><td>LV 2009+</td></tr>
+  <tr><td><code>ShowScrollbars</code></td><td><code>vi.ShowScrollbars</code></td><td>Boolean</td><td>R/W</td><td>显示前面板滚动条</td><td>全版本</td></tr>
+  <tr><td><code>InlineSubVI</code></td><td><code>vi.InlineSubVI</code></td><td>Boolean</td><td>R/W</td><td>是否内联子 VI</td><td>LV 2010+</td></tr>
+  <tr><td><code>Revision</code></td><td><code>vi.Revision</code></td><td>Number</td><td>R</td><td>修订计数器（每次保存 +1）</td><td>全版本</td></tr>
+  <tr>
+    <td><code>ReentrantType</code></td><td><code>vi.ReentrantType</code></td><td>Number</td><td>R/W</td>
+    <td>可重入类型：0=不可重入, 1=预分配副本, 2=共享副本</td><td>全版本</td>
+  </tr>
+  <tr>
+    <td><code>Priority</code></td><td><code>vi.Priority</code></td><td>Number</td><td>R/W</td>
+    <td>执行优先级：0=后台, 1=正常, 2=较高, 3=高, 4=时间关键, 5=子程序</td><td>全版本</td>
+  </tr>
+</table>
+
+<h3>命令行用法</h3>
+<pre><code># 读取全部属性，JSON 输出（默认）
+python scripts/read_vi_props.py "C:\path\to\test.vi"
+
+# 人类可读文本输出
+python scripts/read_vi_props.py --format text "C:\path\to\test.vi"
+
+# 只读取指定属性
+python scripts/read_vi_props.py --props Name,Description,Priority "C:\path\to\test.vi"
+
+# 显式指定 LabVIEW 版本和位数
+python scripts/read_vi_props.py --labview-version 2025 --labview-bitness x64 "C:\path\to\test.vi"
+
+# 输出版本选择与命中诊断（写入 stderr）
+python scripts/read_vi_props.py --verbose "C:\path\to\test.vi"
+</code></pre>
+
+<h3>JSON 输出格式（示例）</h3>
+<pre><code>{
+  "vi_path": "C:\\path\\to\\test.vi",
+  "lv_version": "25.0.0",
+  "props": {
+    "Name": {
+      "ok": true,
+      "type": "String",
+      "value": "test.vi",
+      "error": null,
+      "writable": false,
+      "description": "VI 文件名（不含路径）"
+    },
+    "Description": {
+      "ok": true,
+      "type": "String",
+      "value": "这是一段描述文字",
+      "error": null,
+      "writable": true,
+      "description": "VI 描述（属性对话框说明文字）"
+    },
+    "InlineSubVI": {
+      "ok": false,
+      "type": "Boolean",
+      "value": null,
+      "error": "属性在该 LabVIEW 版本中不可用",
+      "writable": true,
+      "description": "是否内联子 VI"
+    }
+  }
+}
+</code></pre>
+
+<h3>文本输出格式（示例）</h3>
+<pre><code>VI: C:\path\to\test.vi
+
+  Name                  R    String    test.vi
+  Path                  R    String    C:\path\to\test.vi
+  LVVersion             R    String    25.0.0
+  Description           R/W  String    这是一段描述文字
+  HistoryText           R/W  String    (空)
+  PrintHeader           R/W  String    (空)
+  PrintFooter           R/W  String    (空)
+  HasChanges            R    Boolean   False
+  Protected             R    Boolean   False
+  IsRunning             R    Boolean   False
+  AllowDebugging        R/W  Boolean   True
+  BreakOnError          R/W  Boolean   False
+  SuspendWhenCalled     R/W  Boolean   False
+  ShowFPOnCall          R/W  Boolean   False
+  CloseAfterCall        R/W  Boolean   False
+  Scalable              R/W  Boolean   True
+  ShowScrollbars        R/W  Boolean   True
+  InlineSubVI           R/W  Boolean   [不可用] 属性在该版本中不可用
+  Revision              R    Number    42
+  ReentrantType         R/W  Number    0 (不可重入)
+  Priority              R/W  Number    1 (正常)
+  FPTitle               R/W  String    test
+  FPOpen                R    Boolean   False
+</code></pre>
+
+<h3>Python API</h3>
+<pre><code>from scripts.read_vi_props import read_vi_props
+
+# 读取全部属性
+props = read_vi_props(r"C:\path\to\test.vi")
+
+# 读取指定属性
+props = read_vi_props(
+    r"C:\path\to\test.vi",
+    props=["Name", "Description", "Priority"],
+)
+
+# 显式版本 + 位数
+props = read_vi_props(
+    r"C:\path\to\test.vi",
+    labview_version="2025",
+    labview_bitness="x64",
+)
+
+# 访问单个属性
+if props["Description"]["ok"]:
+    print(props["Description"]["value"])
+else:
+    print("读取失败:", props["Description"]["error"])
+</code></pre>
+
+<h3>退出码</h3>
+<table>
+  <tr><th>退出码</th><th>含义</th></tr>
+  <tr><td>0</td><td>成功，属性输出到 stdout</td></tr>
+  <tr><td>2</td><td>VI 文件不存在</td></tr>
+  <tr><td>3</td><td>连接 LabVIEW 失败或读取属性失败</td></tr>
+  <tr><td>4</td><td>参数错误或未知属性名</td></tr>
+</table>
+
+<h3>已知边界</h3>
+<ul>
+  <li>仅支持 Windows 平台。</li>
+  <li>部分属性（<code>InlineSubVI</code>、<code>Scalable</code>）在较旧 LabVIEW 版本中不存在；单属性失败时 <code>ok=false</code>，不影响其他属性。</li>
+  <li>同版本 x86/x64 并存时，请显式传 <code>--labview-bitness</code>。</li>
+  <li>所有属性值均以字符串形式返回（包括 Boolean 和 Number），调用方需自行转换类型。</li>
+  <li>不做写操作，属性表中标注 R/W 的属性本版本仅支持读取。</li>
 </ul>
 
 </body>
