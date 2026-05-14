@@ -309,15 +309,16 @@ class ViEditorSession {
       .then(async () => {
         // Keep _dynamicPropsPending = true while the LabVIEW call is in flight
         // so that repeated button clicks during the round-trip are deduplicated.
-        // Reset only after loadDynamicProps settles.
-        if (!this.disposed) {
-          await this.loadDynamicProps(forceRefresh);
+        // Reset only after loadDynamicProps settles (success or error).
+        try {
+          if (!this.disposed) {
+            await this.loadDynamicProps(forceRefresh);
+          }
+        } finally {
+          this._dynamicPropsPending = false;
         }
-        this._dynamicPropsPending = false;
       })
-      .catch(() => {
-        this._dynamicPropsPending = false;
-      });
+      .catch(() => { /* loadDynamicProps errors are handled above; chain must not reject */ });
   }
 
   private async loadAndPush(forceRefresh = false): Promise<void> {
