@@ -542,6 +542,147 @@
     }
   }
 
+  function normalizeEditableValue(name, type, value) {
+    const text = value == null ? '' : String(value);
+    if (type === 'Boolean') {
+      return (text === 'True' || text === '1' || text === '-1') ? 'True' : 'False';
+    }
+    if (type === 'Number' && NUMBER_ENUMS[name]) {
+      return text.trim().split(/\s+/)[0] || '';
+    }
+    return text;
+  }
+
+  function formatValueForDisplay(name, type, value) {
+    if (type === 'Boolean') {
+      return value === 'True' ? '是 (True)' : '否 (False)';
+    }
+    if (type === 'Number' && NUMBER_ENUMS[name]) {
+      const option = NUMBER_ENUMS[name].find((item) => String(item.value) === String(value));
+      return option ? option.label : String(value || '');
+    }
+    return String(value || '');
+  }
+
+  function syncDirtyState(td, name) {
+    const slot = propRows[name];
+    const tr = td.parentElement;
+    if (!slot || !tr) { return; }
+    tr.classList.toggle('dirty', slot.current !== slot.original);
+  }
+
+  function buildEditorControl(host, name, type, value, onChange) {
+    if (type === 'Boolean') {
+      const select = document.createElement('select');
+      [['True', '是 (True)'], ['False', '否 (False)']].forEach(([val, label]) => {
+        const opt = document.createElement('option');
+        opt.value = val;
+        opt.textContent = label;
+        select.appendChild(opt);
+      });
+      select.value = value;
+      select.addEventListener('change', () => onChange(select.value));
+      host.appendChild(select);
+      return select;
+    }
+    if (type === 'Number' && NUMBER_ENUMS[name]) {
+      const select = document.createElement('select');
+      NUMBER_ENUMS[name].forEach((opt) => {
+        const o = document.createElement('option');
+        o.value = String(opt.value);
+        o.textContent = opt.label;
+        select.appendChild(o);
+      });
+      select.value = value;
+      select.addEventListener('change', () => onChange(select.value));
+      host.appendChild(select);
+      return select;
+    }
+    if (type === 'Number') {
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.value = value;
+      input.addEventListener('input', () => onChange(input.value));
+      host.appendChild(input);
+      return input;
+    }
+    if (type === 'String' && (name === 'Description' || name === 'HistoryText')) {
+      const ta = document.createElement('textarea');
+      ta.value = value;
+      ta.addEventListener('input', () => onChange(ta.value));
+      host.appendChild(ta);
+      return ta;
+    }
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = value;
+    input.addEventListener('input', () => onChange(input.value));
+    host.appendChild(input);
+    return input;
+  }
+
+  function renderEditableValueCell(td, name) {
+    const slot = propRows[name];
+    if (!slot) { return; }
+
+    td.innerHTML = '';
+
+    const shell = document.createElement('div');
+    shell.className = 'value-cell-shell';
+    const content = document.createElement('div');
+    content.className = 'value-cell-content';
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'tb-btn small value-action-btn';
+
+    if (slot.editing) {
+      const focusTarget = buildEditorControl(content, name, slot.type, slot.current, (raw) => {
+        slot.current = raw;
+        syncDirtyState(td, name);
+        updateSaveButton();
+      });
+      action.textContent = '完成';
+      action.title = '收起编辑器';
+      action.addEventListener('click', () => {
+        slot.editing = false;
+        renderEditableValueCell(td, name);
+      });
+
+      shell.appendChild(content);
+      shell.appendChild(action);
+      td.appendChild(shell);
+      syncDirtyState(td, name);
+      updateSaveButton();
+      if (focusTarget && typeof focusTarget.focus === 'function') {
+        focusTarget.focus();
+      }
+      return;
+    }
+
+    const display = document.createElement('div');
+    display.className = 'value-display';
+    const displayValue = formatValueForDisplay(name, slot.type, slot.current);
+    if (displayValue) {
+      display.textContent = displayValue;
+    } else {
+      display.textContent = '(空)';
+      display.classList.add('value-display-empty');
+    }
+    content.appendChild(display);
+
+    action.textContent = '编辑';
+    action.title = '启用编辑';
+    action.addEventListener('click', () => {
+      slot.editing = true;
+      renderEditableValueCell(td, name);
+    });
+
+    shell.appendChild(content);
+    shell.appendChild(action);
+    td.appendChild(shell);
+    syncDirtyState(td, name);
+  }
+
   function renderTable(props) {
     // Reset row tracking; rebuild from scratch each refresh.
     Object.keys(propRows).forEach((k) => delete propRows[k]);
@@ -586,13 +727,15 @@
         } else {
           const value = entry.value == null ? '' : String(entry.value);
           if (writable) {
-            buildEditor(tdVal, name, entry.type, value);
+            const normalizedValue = normalizeEditableValue(name, entry.type, value);
             propRows[name] = {
-              original: value,
-              current: value,
+              original: normalizedValue,
+              current: normalizedValue,
               type: entry.type,
               writable: true,
+              editing: false,
             };
+            renderEditableValueCell(tdVal, name);
           } else {
             tdVal.textContent = value;
           }
@@ -607,71 +750,6 @@
       }
     }
     updateSaveButton();
-  }
-
-  function buildEditor(td, name, type, value) {
-    const onChange = (raw) => {
-      const slot = propRows[name];
-      if (!slot) { return; }
-      slot.current = raw;
-      const tr = td.parentElement;
-      if (tr) {
-        tr.classList.toggle('dirty', raw !== slot.original);
-      }
-      updateSaveButton();
-    };
-
-    if (type === 'Boolean') {
-      const select = document.createElement('select');
-      // 显示中文，但 value 仍用 'True' / 'False'，便于后续序列化时与 VBScript
-      // 输出（"True" / "False"）保持一致。
-      [['True', '是 (True)'], ['False', '否 (False)']].forEach(([val, label]) => {
-        const opt = document.createElement('option');
-        opt.value = val;
-        opt.textContent = label;
-        select.appendChild(opt);
-      });
-      // 规范化输入值：VBScript 输出 "True"/"False"；同时容忍 -1/0/1。
-      const normalized = (value === 'True' || value === '1' || value === '-1') ? 'True' : 'False';
-      select.value = normalized;
-      select.addEventListener('change', () => onChange(select.value));
-      td.appendChild(select);
-      // 用规范化后的值填回原始/当前态，确保脏检查可靠。
-      const slot = propRows[name];
-      if (slot) { slot.original = normalized; slot.current = normalized; }
-    } else if (type === 'Number' && NUMBER_ENUMS[name]) {
-      const select = document.createElement('select');
-      NUMBER_ENUMS[name].forEach((opt) => {
-        const o = document.createElement('option');
-        o.value = String(opt.value);
-        o.textContent = opt.label;
-        select.appendChild(o);
-      });
-      // Tolerate annotated values like "1 (预分配副本)".
-      const head = String(value).trim().split(/\s+/)[0];
-      select.value = head;
-      select.addEventListener('change', () => onChange(select.value));
-      td.appendChild(select);
-      const slot = propRows[name];
-      if (slot) { slot.original = head; slot.current = head; }
-    } else if (type === 'Number') {
-      const input = document.createElement('input');
-      input.type = 'number';
-      input.value = value;
-      input.addEventListener('input', () => onChange(input.value));
-      td.appendChild(input);
-    } else if (type === 'String' && (name === 'Description' || name === 'HistoryText')) {
-      const ta = document.createElement('textarea');
-      ta.value = value;
-      ta.addEventListener('input', () => onChange(ta.value));
-      td.appendChild(ta);
-    } else {
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.value = value;
-      input.addEventListener('input', () => onChange(input.value));
-      td.appendChild(input);
-    }
   }
 
   function collectUpdates() {

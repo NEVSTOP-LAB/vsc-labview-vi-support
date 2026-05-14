@@ -346,6 +346,36 @@ body.splitter-dragging * {
   word-break: break-word;
 }
 
+.value-cell-shell {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.value-cell-content {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.value-display {
+  min-height: 24px;
+  padding: 2px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.value-display-empty {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.value-action-btn {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  min-width: 48px;
+}
+
 .access-badge {
   display: inline-flex;
   align-items: center;
