@@ -5,5 +5,9 @@
   "commands.clearCache": "清理缓存",
   "editor.viEditor.displayName": "LabVIEW VI 预览",
   "config.cacheDirectory.markdownDescription": "当前缓存目录。此值由扩展自动维护，不建议手动修改。\n\n[打开缓存目录](command:labview-vi-support.openCacheDirectory) | [清理缓存](command:labview-vi-support.clearCache)",
+  "config.viewMode.description": "编辑器默认视图模式。可在用户设置中配置系统级默认值，也可在工作区设置中覆盖为当前项目统一使用的视图模式。",
+  "config.viewMode.enum.both": "同时显示预览区域和属性表。",
+  "config.viewMode.enum.tableOnly": "仅显示属性表。",
+  "config.viewMode.enum.previewOnly": "仅显示预览区域。",
   "config.scriptTimeoutMs.description": "调用内置 LabVIEW worker 链路（图像导出 / 属性读取 / 属性写入）的超时时间（毫秒）。"
 }

@@ -17,6 +17,15 @@ import {
   type PropsJsonEnvelope,
 } from '../scripts/propsParser';
 import { resolveScriptPaths, type ScriptPaths } from '../scripts/scriptPaths';
+import {
+  VIEW_MODE_CONFIGURATION_KEY,
+  VIEW_MODE_CONFIGURATION_SECTION,
+  VIEW_MODE_FULL_CONFIGURATION_KEY,
+  isViewMode,
+  normalizeViewMode,
+  preferWorkspaceConfigurationTarget,
+  type ViewMode,
+} from './viewMode';
 
 /**
  * LabVIEW `.vi` / `.vit` 文件的自定义编辑器。
@@ -30,6 +39,9 @@ import { resolveScriptPaths, type ScriptPaths } from '../scripts/scriptPaths';
 export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViDocument> {
   public static readonly viewType = 'labview-vi-support.viEditor';
 
+  private readonly sessions = new Set<ViEditorSession>();
+  private currentViewMode: ViewMode;
+
   public static cacheRoot(context: vscode.ExtensionContext): string {
     return getCacheRoot(context.globalStorageUri.fsPath);
   }
@@ -39,7 +51,7 @@ export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViD
     const cache = new ViCache(cacheRoot);
     const scripts = resolveScriptPaths(context.extensionPath);
     const provider = new ViEditorProvider(context, cache, scripts);
-    return vscode.window.registerCustomEditorProvider(
+    const editorRegistration = vscode.window.registerCustomEditorProvider(
       ViEditorProvider.viewType,
       provider,
       {
@@ -47,13 +59,21 @@ export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViD
         supportsMultipleEditorsPerDocument: false,
       },
     );
+    const configWatcher = vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration(VIEW_MODE_FULL_CONFIGURATION_KEY)) {
+        void provider.reloadConfiguredViewMode();
+      }
+    });
+    return vscode.Disposable.from(editorRegistration, configWatcher);
   }
 
   private constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly cache: ViCache,
     private readonly scripts: ScriptPaths,
-  ) {}
+  ) {
+    this.currentViewMode = this.readConfiguredViewMode();
+  }
 
   public async openCustomDocument(uri: vscode.Uri): Promise<ViDocument> {
     return new ViDocument(uri);
@@ -78,23 +98,61 @@ export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViD
       this.cache,
       this.scripts,
       this.getRuntimeOptions(),
+      () => this.currentViewMode,
+      async (viewMode) => this.updateConfiguredViewMode(viewMode),
     );
+    this.sessions.add(session);
 
     webviewPanel.webview.onDidReceiveMessage((msg) => {
       void session.handleMessage(msg);
     });
 
-    webviewPanel.onDidDispose(() => session.dispose());
+    webviewPanel.onDidDispose(() => {
+      this.sessions.delete(session);
+      session.dispose();
+    });
 
     await session.initialize();
   }
 
   private getRuntimeOptions(): LabVIEWRuntimeOptions {
-    const cfg = vscode.workspace.getConfiguration('labview-vi-support');
+    const cfg = vscode.workspace.getConfiguration(VIEW_MODE_CONFIGURATION_SECTION);
     const timeout = cfg.get<number>('scriptTimeoutMs');
     return {
       timeoutMs: typeof timeout === 'number' && timeout > 0 ? timeout : undefined,
     };
+  }
+
+  private readConfiguredViewMode(): ViewMode {
+    const config = vscode.workspace.getConfiguration(VIEW_MODE_CONFIGURATION_SECTION);
+    return normalizeViewMode(config.get<string>(VIEW_MODE_CONFIGURATION_KEY));
+  }
+
+  private async reloadConfiguredViewMode(): Promise<void> {
+    await this.applyConfiguredViewMode(this.readConfiguredViewMode());
+  }
+
+  private async updateConfiguredViewMode(viewMode: ViewMode): Promise<void> {
+    const config = vscode.workspace.getConfiguration(VIEW_MODE_CONFIGURATION_SECTION);
+    const target = preferWorkspaceConfigurationTarget(
+      vscode.workspace.workspaceFile !== undefined,
+      vscode.workspace.workspaceFolders?.length ?? 0,
+    )
+      ? vscode.ConfigurationTarget.Workspace
+      : vscode.ConfigurationTarget.Global;
+
+    await config.update(VIEW_MODE_CONFIGURATION_KEY, viewMode, target);
+    await this.applyConfiguredViewMode(viewMode);
+  }
+
+  private async applyConfiguredViewMode(viewMode: ViewMode): Promise<void> {
+    if (this.currentViewMode === viewMode) {
+      return;
+    }
+    this.currentViewMode = viewMode;
+    await Promise.allSettled(
+      [...this.sessions].map((session) => session.postViewMode(viewMode)),
+    );
   }
 
   private renderHtml(webview: vscode.Webview): string {
@@ -139,6 +197,7 @@ interface OutboundState {
   type: 'state';
   viPath: string;
   hash: string;
+  viewMode: ViewMode;
   fpImage: string | null;
   bdImage: string | null;
   props: PropsJsonEnvelope | null;
@@ -160,6 +219,8 @@ class ViEditorSession {
     private readonly cache: ViCache,
     private readonly scripts: ScriptPaths,
     private readonly runtimeOptions: LabVIEWRuntimeOptions,
+    private readonly getViewMode: () => ViewMode,
+    private readonly onViewModeChange: (viewMode: ViewMode) => Promise<void>,
   ) {}
 
   public dispose(): void {
@@ -182,6 +243,15 @@ class ViEditorSession {
       case 'reload':
         this._enqueueLoad(true);
         break;
+      case 'setViewMode': {
+        const viewMode = message['viewMode'];
+        if (!isViewMode(viewMode)) {
+          await this.postError('setViewMode 消息载荷无效。');
+          return;
+        }
+        await this.onViewModeChange(viewMode);
+        break;
+      }
       case 'saveProps': {
         const updates = message['updates'];
         if (typeof updates !== 'object' || updates === null) {
@@ -341,6 +411,13 @@ class ViEditorSession {
   // WebView I/O
   // -------------------------------------------------------------------------
 
+  public async postViewMode(viewMode: ViewMode): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
+    await this.panel.webview.postMessage({ type: 'viewMode', viewMode });
+  }
+
   private async readCachedProps(entry: CacheEntry): Promise<PropsJsonEnvelope | null> {
     const raw = await this.cache.readProps(entry);
     if (raw === null) {
@@ -356,7 +433,7 @@ class ViEditorSession {
     }
   }
 
-  private async pushState(partial: Omit<OutboundState, 'type' | 'viPath' | 'hash'>): Promise<void> {
+  private async pushState(partial: Omit<OutboundState, 'type' | 'viPath' | 'hash' | 'viewMode'>): Promise<void> {
     if (this.disposed || !this.currentEntry) {
       return;
     }
@@ -364,6 +441,7 @@ class ViEditorSession {
       type: 'state',
       viPath: this.document.uri.fsPath,
       hash: this.currentEntry.hash,
+      viewMode: this.getViewMode(),
       fpImage: partial.fpImage ? await this.toWebviewImageSource(partial.fpImage) : null,
       bdImage: partial.bdImage ? await this.toWebviewImageSource(partial.bdImage) : null,
       props: partial.props,

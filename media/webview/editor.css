@@ -23,11 +23,33 @@ html, body {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
+  flex-wrap: wrap;
   padding: 6px 8px;
   border-bottom: 1px solid var(--vscode-panel-border, #444);
   background: var(--vscode-editorWidget-background, transparent);
   flex: 0 0 auto;
+}
+
+.tb-group,
+.tb-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tb-field-label {
+  opacity: 0.85;
+}
+
+.tb-select {
+  min-width: 132px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 3px;
+  padding: 4px 8px;
+  font: inherit;
 }
 
 .tb-btn {
@@ -64,14 +86,14 @@ html, body {
   cursor: not-allowed;
 }
 
-.tb-spacer {
-  flex: 0 0 12px;
-}
-
 .zoom-label {
   min-width: 48px;
   text-align: center;
   opacity: 0.85;
+}
+
+.hidden {
+  display: none !important;
 }
 
 /* ---------- Status / errors ---------- */
@@ -118,12 +140,28 @@ html, body {
   display: none;
 }
 
-.pane-label {
+.pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 4px 8px;
-  font-size: 0.9em;
-  opacity: 0.75;
   border-bottom: 1px solid var(--vscode-panel-border, #444);
   background: var(--vscode-editorWidget-background, transparent);
+}
+
+.pane-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  font-size: 0.9em;
+  opacity: 0.75;
+}
+
+.pane-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
 }
 
 .viewport {

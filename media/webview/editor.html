@@ -10,19 +10,28 @@
   <body>
     <div id="app">
       <div class="toolbar" role="toolbar" aria-label="面板">
-        <button id="btn-fp"     class="tb-btn"  title="只显示前面板">仅前面板</button>
-        <button id="btn-bd"     class="tb-btn"  title="只显示程序框图">仅程序框图</button>
-        <button id="btn-both"   class="tb-btn active" title="同时显示前面板和程序框图">两者皆显示</button>
-        <span class="tb-spacer"></span>
-        <button id="btn-table"  class="tb-btn" title="显示 / 隐藏属性表">属性表</button>
-        <span class="tb-spacer"></span>
-        <button id="btn-zoom-out" class="tb-btn small" title="缩小">−</button>
-        <span id="zoom-label" class="zoom-label">100%</span>
-        <button id="btn-zoom-in"  class="tb-btn small" title="放大">+</button>
-        <button id="btn-zoom-reset" class="tb-btn small" title="自适应窗口（也可双击图像）">重置</button>
-        <span class="tb-spacer"></span>
-        <button id="btn-save"   class="tb-btn primary" title="把改动写回 .vi 文件" disabled>保存</button>
-        <button id="btn-reload" class="tb-btn"  title="重新导出图像并重新读取属性">刷新</button>
+        <label class="tb-field" for="view-mode">
+          <span class="tb-field-label">视图模式</span>
+          <select id="view-mode" class="tb-select" title="选择当前编辑器中需要显示的内容区域">
+            <option value="both">预览与属性表</option>
+            <option value="table-only">仅显示属性表</option>
+            <option value="preview-only">仅显示预览</option>
+          </select>
+        </label>
+
+        <div id="preview-controls" class="tb-group">
+          <button id="btn-fp"     class="tb-btn"  title="只显示前面板">仅前面板</button>
+          <button id="btn-bd"     class="tb-btn"  title="只显示程序框图">仅程序框图</button>
+          <button id="btn-both"   class="tb-btn active" title="同时显示前面板和程序框图">同时显示</button>
+        </div>
+
+        <div id="table-controls" class="tb-group">
+          <button id="btn-save"   class="tb-btn primary" title="把改动写回 .vi 文件" disabled>保存</button>
+        </div>
+
+        <div class="tb-group">
+          <button id="btn-reload" class="tb-btn" title="重新导出图像并重新读取属性">刷新</button>
+        </div>
       </div>
 
       <div id="status" class="status" hidden></div>
@@ -31,14 +40,30 @@
       <div id="main" class="main">
         <div id="image-area" class="image-area">
           <div class="image-pane" data-pane="fp">
-            <div class="pane-label">前面板</div>
+            <div class="pane-header">
+              <div class="pane-label">前面板</div>
+              <div class="pane-zoom-controls">
+                <button class="tb-btn small pane-zoom-btn" data-pane="fp" data-action="zoom-out" title="缩小前面板">−</button>
+                <span class="zoom-label" data-zoom-label="fp">100%</span>
+                <button class="tb-btn small pane-zoom-btn" data-pane="fp" data-action="zoom-in" title="放大前面板">+</button>
+                <button class="tb-btn small pane-zoom-btn" data-pane="fp" data-action="zoom-reset" title="前面板自适应窗口（也可双击图像）">重置</button>
+              </div>
+            </div>
             <div class="viewport" data-viewport="fp">
               <img class="vi-image" data-img="fp" alt="前面板" draggable="false" />
               <div class="placeholder" data-placeholder="fp">尚未导出前面板图像。</div>
             </div>
           </div>
           <div class="image-pane" data-pane="bd">
-            <div class="pane-label">程序框图</div>
+            <div class="pane-header">
+              <div class="pane-label">程序框图</div>
+              <div class="pane-zoom-controls">
+                <button class="tb-btn small pane-zoom-btn" data-pane="bd" data-action="zoom-out" title="缩小程序框图">−</button>
+                <span class="zoom-label" data-zoom-label="bd">100%</span>
+                <button class="tb-btn small pane-zoom-btn" data-pane="bd" data-action="zoom-in" title="放大程序框图">+</button>
+                <button class="tb-btn small pane-zoom-btn" data-pane="bd" data-action="zoom-reset" title="程序框图自适应窗口（也可双击图像）">重置</button>
+              </div>
+            </div>
             <div class="viewport" data-viewport="bd">
               <img class="vi-image" data-img="bd" alt="程序框图" draggable="false" />
               <div class="placeholder" data-placeholder="bd">尚未导出程序框图图像。</div>

@@ -3,11 +3,13 @@
 // 与扩展宿主通信。
 //
 // 入站消息（host → webview）：
-//   { type: 'state', viPath, hash, fpImage, bdImage, props, errors, loading }
+//   { type: 'state', viPath, hash, viewMode, fpImage, bdImage, props, errors, loading }
+//   { type: 'viewMode', viewMode }
 //   { type: 'error', message }
 // 出站消息（webview → host）：
 //   { type: 'ready' }
 //   { type: 'reload' }
+//   { type: 'setViewMode', viewMode }
 //   { type: 'saveProps', updates: { 属性名: 值, ... } }
 
 (function () {
@@ -20,8 +22,8 @@
   // -------------------------------------------------------------------------
   /** @type {Record<string, {original: string|null, current: string, type: string, writable: boolean}>} */
   const propRows = {};
-  let displayMode = 'both';      // 'fp' | 'bd' | 'both'
-  let tableVisible = false;
+  let viewMode = 'both';         // 'both' | 'table-only' | 'preview-only'
+  let previewMode = 'both';      // 'fp' | 'bd' | 'both'
   /** @type {Record<'fp'|'bd', { scale: number, x: number, y: number, naturalW: number, naturalH: number }>} */
   const viewState = {
     fp: { scale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0 },
@@ -30,12 +32,6 @@
   const ZOOM_MIN = 0.1;
   const ZOOM_MAX = 5.0;
   const ZOOM_STEP = 1.2;
-  /** Which pane the zoom toolbar buttons act on. Always the first visible pane. */
-  function activePane() {
-    if (displayMode === 'fp') { return 'fp'; }
-    if (displayMode === 'bd') { return 'bd'; }
-    return 'fp';
-  }
 
   // Enum metadata for known number-typed properties (mirrors read_vi_props.py).
   const NUMBER_ENUMS = {
@@ -58,16 +54,14 @@
   // DOM
   // -------------------------------------------------------------------------
   const $ = (sel) => document.querySelector(sel);
+  const modeSelect = $('#view-mode');
   const btnFp     = $('#btn-fp');
   const btnBd     = $('#btn-bd');
   const btnBoth   = $('#btn-both');
-  const btnTable  = $('#btn-table');
   const btnSave   = $('#btn-save');
   const btnReload = $('#btn-reload');
-  const btnZoomIn  = $('#btn-zoom-in');
-  const btnZoomOut = $('#btn-zoom-out');
-  const btnZoomReset = $('#btn-zoom-reset');
-  const zoomLabel = $('#zoom-label');
+  const previewControls = $('#preview-controls');
+  const tableControls = $('#table-controls');
   const errorsEl  = $('#errors');
   const tbody     = $('#props-tbody');
   const tableArea = $('#table-area');
@@ -89,6 +83,10 @@
     fp: document.querySelector('.placeholder[data-placeholder="fp"]'),
     bd: document.querySelector('.placeholder[data-placeholder="bd"]'),
   };
+  const zoomLabels = {
+    fp: document.querySelector('[data-zoom-label="fp"]'),
+    bd: document.querySelector('[data-zoom-label="bd"]'),
+  };
 
   // -------------------------------------------------------------------------
   // Message I/O
@@ -98,12 +96,19 @@
     if (!msg || typeof msg !== 'object') { return; }
     if (msg.type === 'state') {
       applyState(msg);
+    } else if (msg.type === 'viewMode') {
+      if (isKnownViewMode(msg.viewMode)) {
+        setViewMode(msg.viewMode, { persist: false });
+      }
     } else if (msg.type === 'error') {
       appendError(msg.message);
     }
   });
 
   function applyState(state) {
+    if (isKnownViewMode(state.viewMode)) {
+      setViewMode(state.viewMode, { persist: false });
+    }
     setImage('fp', state.fpImage, state.loading && state.loading.fp);
     setImage('bd', state.bdImage, state.loading && state.loading.bd);
     if (state.props && state.props.props) {
@@ -186,7 +191,7 @@
     vs.x = Math.max(0, (rect.width - vs.naturalW * scale) / 2);
     vs.y = Math.max(0, (rect.height - vs.naturalH * scale) / 2);
     applyTransform(panel);
-    refreshZoomLabel();
+    refreshZoomLabel(panel);
   }
 
   function applyTransform(panel) {
@@ -195,9 +200,10 @@
     img.style.transform = 'translate(' + vs.x + 'px, ' + vs.y + 'px) scale(' + vs.scale + ')';
   }
 
-  function refreshZoomLabel() {
-    const vs = viewState[activePane()];
-    zoomLabel.textContent = Math.round(vs.scale * 100) + '%';
+  function refreshZoomLabel(panel) {
+    const label = zoomLabels[panel];
+    if (!label) { return; }
+    label.textContent = Math.round(viewState[panel].scale * 100) + '%';
   }
 
   function zoomBy(panel, factor, anchorX, anchorY) {
@@ -213,7 +219,7 @@
     }
     vs.scale = newScale;
     applyTransform(panel);
-    refreshZoomLabel();
+    refreshZoomLabel(panel);
   }
 
   function attachPanZoom(panel) {
@@ -267,39 +273,89 @@
   // -------------------------------------------------------------------------
   // Toolbar
   // -------------------------------------------------------------------------
-  function setMode(mode) {
-    displayMode = mode;
-    btnFp.classList.toggle('active',   mode === 'fp');
-    btnBd.classList.toggle('active',   mode === 'bd');
-    btnBoth.classList.toggle('active', mode === 'both');
-    panes.fp.classList.toggle('hidden', mode === 'bd');
-    panes.bd.classList.toggle('hidden', mode === 'fp');
-    // Refit on layout change (after the next paint).
+  function isKnownViewMode(mode) {
+    return mode === 'both' || mode === 'table-only' || mode === 'preview-only';
+  }
+
+  function isPreviewVisible() {
+    return viewMode !== 'table-only';
+  }
+
+  function isTableVisible() {
+    return viewMode !== 'preview-only';
+  }
+
+  function hasDirtyChanges() {
+    return Object.values(propRows).some((slot) => slot.writable && slot.current !== slot.original);
+  }
+
+  function refreshLayout() {
     requestAnimationFrame(() => {
       fitToViewport('fp');
       fitToViewport('bd');
-      refreshZoomLabel();
     });
   }
-  btnFp.addEventListener('click',   () => setMode('fp'));
-  btnBd.addEventListener('click',   () => setMode('bd'));
-  btnBoth.addEventListener('click', () => setMode('both'));
 
-  btnTable.addEventListener('click', () => {
-    tableVisible = !tableVisible;
-    btnTable.classList.toggle('active', tableVisible);
-    tableArea.classList.toggle('hidden', !tableVisible);
-    imageArea.style.flex = tableVisible ? '' : '1 1 100%';
-    requestAnimationFrame(() => {
-      fitToViewport('fp');
-      fitToViewport('bd');
-      refreshZoomLabel();
+  function updateToolbarVisibility() {
+    const previewVisible = isPreviewVisible();
+    const tableVisible = isTableVisible();
+    previewControls.classList.toggle('hidden', !previewVisible);
+    tableControls.classList.toggle('hidden', !tableVisible && !hasDirtyChanges());
+  }
+
+  function applyPreviewMode() {
+    btnFp.classList.toggle('active', previewMode === 'fp');
+    btnBd.classList.toggle('active', previewMode === 'bd');
+    btnBoth.classList.toggle('active', previewMode === 'both');
+    panes.fp.classList.toggle('hidden', !isPreviewVisible() || previewMode === 'bd');
+    panes.bd.classList.toggle('hidden', !isPreviewVisible() || previewMode === 'fp');
+  }
+
+  function setPreviewMode(mode) {
+    previewMode = mode;
+    applyPreviewMode();
+    refreshLayout();
+  }
+
+  function setViewMode(mode, options) {
+    if (!isKnownViewMode(mode)) {
+      return;
+    }
+    const persist = !!(options && options.persist);
+    const changed = viewMode !== mode;
+    viewMode = mode;
+    modeSelect.value = mode;
+    imageArea.classList.toggle('hidden', !isPreviewVisible());
+    tableArea.classList.toggle('hidden', !isTableVisible());
+    imageArea.style.flex = isTableVisible() ? '' : '1 1 100%';
+    tableArea.style.flex = isPreviewVisible() ? '' : '1 1 100%';
+    applyPreviewMode();
+    updateToolbarVisibility();
+    refreshLayout();
+    if (persist && changed) {
+      vscode.postMessage({ type: 'setViewMode', viewMode: mode });
+    }
+  }
+
+  modeSelect.addEventListener('change', () => setViewMode(modeSelect.value, { persist: true }));
+  btnFp.addEventListener('click',   () => setPreviewMode('fp'));
+  btnBd.addEventListener('click',   () => setPreviewMode('bd'));
+  btnBoth.addEventListener('click', () => setPreviewMode('both'));
+
+  document.querySelectorAll('.pane-zoom-btn').forEach((button) => {
+    button.addEventListener('click', () => {
+      const panel = button.dataset.pane;
+      const action = button.dataset.action;
+      if (panel !== 'fp' && panel !== 'bd') { return; }
+      if (action === 'zoom-in') {
+        zoomBy(panel, ZOOM_STEP);
+      } else if (action === 'zoom-out') {
+        zoomBy(panel, 1 / ZOOM_STEP);
+      } else if (action === 'zoom-reset') {
+        fitToViewport(panel);
+      }
     });
   });
-
-  btnZoomIn.addEventListener('click',    () => zoomBy(activePane(), ZOOM_STEP));
-  btnZoomOut.addEventListener('click',   () => zoomBy(activePane(), 1 / ZOOM_STEP));
-  btnZoomReset.addEventListener('click', () => fitToViewport(activePane()));
 
   btnReload.addEventListener('click', () => {
     clearErrors();
@@ -459,12 +515,13 @@
   }
 
   function updateSaveButton() {
-    const dirty = Object.values(propRows).some((s) => s.writable && s.current !== s.original);
-    btnSave.disabled = !dirty;
+    btnSave.disabled = !hasDirtyChanges();
+    updateToolbarVisibility();
   }
 
   // -------------------------------------------------------------------------
   // Init
   // -------------------------------------------------------------------------
+  setViewMode(viewMode, { persist: false });
   vscode.postMessage({ type: 'ready' });
 })();

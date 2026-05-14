@@ -71,6 +71,22 @@
           "scope": "machine",
           "markdownDescription": "%config.cacheDirectory.markdownDescription%"
         },
+        "labview-vi-support.viewMode": {
+          "type": "string",
+          "default": "both",
+          "enum": [
+            "both",
+            "table-only",
+            "preview-only"
+          ],
+          "scope": "window",
+          "description": "%config.viewMode.description%",
+          "enumDescriptions": [
+            "%config.viewMode.enum.both%",
+            "%config.viewMode.enum.tableOnly%",
+            "%config.viewMode.enum.previewOnly%"
+          ]
+        },
         "labview-vi-support.scriptTimeoutMs": {
           "type": "number",
           "default": 120000,
