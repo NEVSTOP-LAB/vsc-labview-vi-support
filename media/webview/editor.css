@@ -205,8 +205,13 @@ html, body {
   position: relative;
   overflow: hidden;
   cursor: grab;
-  background:
-    repeating-conic-gradient(rgba(127,127,127,0.08) 0% 25%, transparent 0% 50%) 50% / 16px 16px;
+  background-color: var(--preview-bg-color, var(--vscode-editor-background));
+  background-image: var(
+    --preview-bg-pattern,
+    repeating-conic-gradient(rgba(127,127,127,0.08) 0% 25%, transparent 0% 50%)
+  );
+  background-position: 50%;
+  background-size: 16px 16px;
 }
 
 .viewport.grabbing {
@@ -226,6 +231,9 @@ html, body {
 
 .vi-image.loaded {
   display: block;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--vscode-panel-border, #444) 72%, transparent),
+    0 10px 24px rgba(0, 0, 0, 0.16);
 }
 
 .placeholder {
