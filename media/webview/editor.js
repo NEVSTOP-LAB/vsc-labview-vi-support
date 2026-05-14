@@ -32,6 +32,9 @@
   const ZOOM_MIN = 0.1;
   const ZOOM_MAX = 5.0;
   const ZOOM_STEP = 1.2;
+  const DEFAULT_SPLIT_RATIO = 0.6;
+  const MIN_SPLIT_PANE_PX = 120;
+  let splitRatio = DEFAULT_SPLIT_RATIO;
 
   // Enum metadata for known number-typed properties (mirrors read_vi_props.py).
   const NUMBER_ENUMS = {
@@ -63,9 +66,11 @@
   const previewControls = $('#preview-controls');
   const tableControls = $('#table-controls');
   const errorsEl  = $('#errors');
+  const main      = $('#main');
   const tbody     = $('#props-tbody');
   const tableArea = $('#table-area');
   const imageArea = $('#image-area');
+  const splitter  = $('#main-splitter');
 
   const panes = {
     fp: document.querySelector('.image-pane[data-pane="fp"]'),
@@ -134,6 +139,61 @@
   function clearErrors() {
     errorsEl.innerHTML = '';
     errorsEl.hidden = true;
+  }
+
+  function clampImageAreaHeight(totalHeight, desiredHeight) {
+    const minPanePx = Math.min(MIN_SPLIT_PANE_PX, Math.floor(totalHeight / 2));
+    return Math.max(minPanePx, Math.min(totalHeight - minPanePx, desiredHeight));
+  }
+
+  function applyMainLayout() {
+    const previewVisible = isPreviewVisible();
+    const tableVisible = isTableVisible();
+    const bothVisible = previewVisible && tableVisible;
+
+    imageArea.classList.toggle('hidden', !previewVisible);
+    tableArea.classList.toggle('hidden', !tableVisible);
+    splitter.classList.toggle('hidden', !bothVisible);
+
+    if (!previewVisible) {
+      imageArea.style.flex = '';
+      tableArea.style.flex = '1 1 100%';
+      return;
+    }
+
+    if (!tableVisible) {
+      imageArea.style.flex = '1 1 100%';
+      tableArea.style.flex = '';
+      return;
+    }
+
+    const splitterHeight = splitter.getBoundingClientRect().height || 10;
+    const availableHeight = main.clientHeight - splitterHeight;
+    if (availableHeight <= 0) {
+      imageArea.style.flex = '1 1 60%';
+      tableArea.style.flex = '1 1 40%';
+      return;
+    }
+
+    const imageHeight = clampImageAreaHeight(
+      availableHeight,
+      Math.round(availableHeight * splitRatio),
+    );
+    const tableHeight = Math.max(0, availableHeight - imageHeight);
+    splitRatio = imageHeight / availableHeight;
+    imageArea.style.flex = `0 0 ${imageHeight}px`;
+    tableArea.style.flex = `0 0 ${tableHeight}px`;
+  }
+
+  function updateSplitRatioFromClientY(clientY) {
+    const splitterHeight = splitter.getBoundingClientRect().height || 10;
+    const availableHeight = main.clientHeight - splitterHeight;
+    if (availableHeight <= 0) { return; }
+    const mainRect = main.getBoundingClientRect();
+    const rawImageHeight = clientY - mainRect.top - splitterHeight / 2;
+    const imageHeight = clampImageAreaHeight(availableHeight, rawImageHeight);
+    splitRatio = imageHeight / availableHeight;
+    applyMainLayout();
   }
 
   // -------------------------------------------------------------------------
@@ -266,8 +326,36 @@
   attachPanZoom('fp');
   attachPanZoom('bd');
   window.addEventListener('resize', () => {
-    fitToViewport('fp');
-    fitToViewport('bd');
+    refreshLayout();
+  });
+
+  splitter.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || !isPreviewVisible() || !isTableVisible()) {
+      return;
+    }
+    event.preventDefault();
+    const pointerId = event.pointerId;
+    document.body.classList.add('splitter-dragging');
+    splitter.setPointerCapture(pointerId);
+    updateSplitRatioFromClientY(event.clientY);
+
+    const onPointerMove = (moveEvent) => {
+      updateSplitRatioFromClientY(moveEvent.clientY);
+    };
+
+    const stopDragging = () => {
+      document.body.classList.remove('splitter-dragging');
+      if (splitter.hasPointerCapture(pointerId)) {
+        splitter.releasePointerCapture(pointerId);
+      }
+      splitter.removeEventListener('pointermove', onPointerMove);
+      splitter.removeEventListener('pointerup', stopDragging);
+      splitter.removeEventListener('pointercancel', stopDragging);
+    };
+
+    splitter.addEventListener('pointermove', onPointerMove);
+    splitter.addEventListener('pointerup', stopDragging);
+    splitter.addEventListener('pointercancel', stopDragging);
   });
 
   // -------------------------------------------------------------------------
@@ -291,6 +379,7 @@
 
   function refreshLayout() {
     requestAnimationFrame(() => {
+      applyMainLayout();
       fitToViewport('fp');
       fitToViewport('bd');
     });
@@ -325,10 +414,6 @@
     const changed = viewMode !== mode;
     viewMode = mode;
     modeSelect.value = mode;
-    imageArea.classList.toggle('hidden', !isPreviewVisible());
-    tableArea.classList.toggle('hidden', !isTableVisible());
-    imageArea.style.flex = isTableVisible() ? '' : '1 1 100%';
-    tableArea.style.flex = isPreviewVisible() ? '' : '1 1 100%';
     applyPreviewMode();
     updateToolbarVisibility();
     refreshLayout();

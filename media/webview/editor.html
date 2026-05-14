@@ -25,11 +25,10 @@
           <button id="btn-both"   class="tb-btn active" title="同时显示前面板和程序框图">同时显示</button>
         </div>
 
-        <div id="table-controls" class="tb-group">
-          <button id="btn-save"   class="tb-btn primary" title="把改动写回 .vi 文件" disabled>保存</button>
-        </div>
-
-        <div class="tb-group">
+        <div class="tb-group tb-group-actions">
+          <div id="table-controls" class="tb-group">
+            <button id="btn-save"   class="tb-btn primary" title="把改动写回 .vi 文件" disabled>保存</button>
+          </div>
           <button id="btn-reload" class="tb-btn" title="重新导出图像并重新读取属性">刷新</button>
         </div>
       </div>
@@ -70,6 +69,8 @@
             </div>
           </div>
         </div>
+
+        <div id="main-splitter" class="main-splitter hidden" role="separator" aria-orientation="horizontal" aria-label="调整预览区域和属性表的高度"></div>
 
         <div id="table-area" class="table-area hidden">
           <table id="props-table" class="props-table">

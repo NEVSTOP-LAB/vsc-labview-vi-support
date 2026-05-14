@@ -38,6 +38,10 @@ html, body {
   gap: 4px;
 }
 
+.tb-group-actions {
+  margin-left: auto;
+}
+
 .tb-field-label {
   opacity: 0.85;
 }
@@ -126,6 +130,24 @@ html, body {
   min-height: 120px;
 }
 
+.main-splitter {
+  flex: 0 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: row-resize;
+  background: var(--vscode-editorWidget-background, transparent);
+}
+
+.main-splitter::before {
+  content: '';
+  width: 56px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--vscode-panel-border, #444);
+  opacity: 0.85;
+}
+
 .image-pane {
   flex: 1 1 0;
   display: flex;
@@ -212,10 +234,17 @@ html, body {
   flex: 1 1 40%;
   overflow: auto;
   border-top: 1px solid var(--vscode-panel-border, #444);
+  min-height: 120px;
 }
 
 .table-area.hidden {
   display: none;
+}
+
+body.splitter-dragging,
+body.splitter-dragging * {
+  cursor: row-resize !important;
+  user-select: none;
 }
 
 .props-table {
