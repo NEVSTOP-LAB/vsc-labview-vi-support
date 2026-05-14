@@ -346,17 +346,6 @@ body.splitter-dragging * {
   word-break: break-word;
 }
 
-.value-cell-shell {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.value-cell-content {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
 .value-display {
   min-height: 24px;
   padding: 2px 0;
@@ -368,12 +357,6 @@ body.splitter-dragging * {
 .value-display-empty {
   opacity: 0.6;
   font-style: italic;
-}
-
-.value-action-btn {
-  flex: 0 0 auto;
-  padding: 2px 8px;
-  min-width: 48px;
 }
 
 .access-badge {
@@ -400,6 +383,25 @@ body.splitter-dragging * {
 
 .access-badge-readonly {
   color: var(--vscode-descriptionForeground, #9d9d9d);
+}
+
+.access-badge-button {
+  padding: 0;
+  cursor: pointer;
+}
+
+.access-badge-button:hover {
+  background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground, rgba(255,255,255,0.08)));
+}
+
+.access-badge-button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: 1px;
+}
+
+.access-badge-active {
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #fff);
 }
 
 .props-table input[type="text"],

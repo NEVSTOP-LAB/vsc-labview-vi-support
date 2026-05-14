@@ -20,7 +20,7 @@
   // -------------------------------------------------------------------------
   // State
   // -------------------------------------------------------------------------
-  /** @type {Record<string, {original: string|null, current: string, type: string, writable: boolean}>} */
+  /** @type {Record<string, {original: string|null, current: string, type: string, writable: boolean, editing?: boolean}>} */
   const propRows = {};
   let viewMode = 'both';         // 'both' | 'table-only' | 'preview-only'
   let previewMode = 'both';      // 'fp' | 'bd' | 'both'
@@ -503,15 +503,31 @@
     tbody.appendChild(tr);
   }
 
-  function createAccessBadge(writable) {
+  function createReadonlyAccessBadge() {
     const span = document.createElement('span');
-    span.className = 'access-badge ' + (writable ? 'access-badge-writable' : 'access-badge-readonly');
-    span.title = writable ? '可编辑' : '只读';
-    span.setAttribute('aria-label', writable ? '可编辑' : '只读');
-    span.innerHTML = writable
-      ? '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.8 8.8a1.75 1.75 0 0 1-.82.452l-3.057.68a.75.75 0 0 1-.895-.895l.68-3.057a1.75 1.75 0 0 1 .452-.82l8.8-8.8Zm1.414 1.06a.25.25 0 0 0-.354 0l-.72.72 1.44 1.44.72-.72a.25.25 0 0 0 0-.354l-1.086-1.086ZM11.732 5.707l-1.44-1.44-7.1 7.1a.25.25 0 0 0-.064.117l-.391 1.758 1.758-.391a.25.25 0 0 0 .117-.064l7.1-7.1Z"/></svg>'
-      : '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.75 7V5.75a3.25 3.25 0 1 1 6.5 0V7h.5A1.75 1.75 0 0 1 13.5 8.75v4.5A1.75 1.75 0 0 1 11.75 15h-7.5A1.75 1.75 0 0 1 2.5 13.25v-4.5A1.75 1.75 0 0 1 4.25 7h.5Zm5 0V5.75a1.75 1.75 0 1 0-3.5 0V7h3.5Zm-5.5 1.5a.25.25 0 0 0-.25.25v4.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-4.5a.25.25 0 0 0-.25-.25h-7.5Z"/></svg>';
+    span.className = 'access-badge access-badge-readonly';
+    span.title = '只读属性';
+    span.setAttribute('aria-label', '只读属性');
+    span.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.75 7V5.75a3.25 3.25 0 1 1 6.5 0V7h.5A1.75 1.75 0 0 1 13.5 8.75v4.5A1.75 1.75 0 0 1 11.75 15h-7.5A1.75 1.75 0 0 1 2.5 13.25v-4.5A1.75 1.75 0 0 1 4.25 7h.5Zm5 0V5.75a1.75 1.75 0 1 0-3.5 0V7h3.5Zm-5.5 1.5a.25.25 0 0 0-.25.25v4.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-4.5a.25.25 0 0 0-.25-.25h-7.5Z"/></svg>';
     return span;
+  }
+
+  function createWritableAccessButton(editing, onToggle) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'access-badge access-badge-writable access-badge-button';
+    if (editing) {
+      button.classList.add('access-badge-active');
+      button.title = '可编辑属性，点击完成编辑';
+      button.setAttribute('aria-label', '可编辑属性，点击完成编辑');
+      button.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0l-3.25-3.25a.75.75 0 0 1 1.06-1.06L7 9.94l5.72-5.72a.75.75 0 0 1 1.06 0Z"/></svg>';
+    } else {
+      button.title = '可编辑属性，点击开始编辑';
+      button.setAttribute('aria-label', '可编辑属性，点击开始编辑');
+      button.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.8 8.8a1.75 1.75 0 0 1-.82.452l-3.057.68a.75.75 0 0 1-.895-.895l.68-3.057a1.75 1.75 0 0 1 .452-.82l8.8-8.8Zm1.414 1.06a.25.25 0 0 0-.354 0l-.72.72 1.44 1.44.72-.72a.25.25 0 0 0 0-.354l-1.086-1.086ZM11.732 5.707l-1.44-1.44-7.1 7.1a.25.25 0 0 0-.064.117l-.391 1.758 1.758-.391a.25.25 0 0 0 .117-.064l7.1-7.1Z"/></svg>';
+    }
+    button.addEventListener('click', onToggle);
+    return button;
   }
 
   function formatPropType(type) {
@@ -571,6 +587,19 @@
     tr.classList.toggle('dirty', slot.current !== slot.original);
   }
 
+  function renderAccessCell(td, name, tdVal) {
+    td.innerHTML = '';
+    const slot = propRows[name];
+    if (!slot || !slot.writable) {
+      td.appendChild(createReadonlyAccessBadge());
+      return;
+    }
+    td.appendChild(createWritableAccessButton(!!slot.editing, () => {
+      slot.editing = !slot.editing;
+      rerenderEditableRow(td, tdVal, name);
+    }));
+  }
+
   function buildEditorControl(host, name, type, value, onChange) {
     if (type === 'Boolean') {
       const select = document.createElement('select');
@@ -627,30 +656,12 @@
 
     td.innerHTML = '';
 
-    const shell = document.createElement('div');
-    shell.className = 'value-cell-shell';
-    const content = document.createElement('div');
-    content.className = 'value-cell-content';
-    const action = document.createElement('button');
-    action.type = 'button';
-    action.className = 'tb-btn small value-action-btn';
-
     if (slot.editing) {
-      const focusTarget = buildEditorControl(content, name, slot.type, slot.current, (raw) => {
+      const focusTarget = buildEditorControl(td, name, slot.type, slot.current, (raw) => {
         slot.current = raw;
         syncDirtyState(td, name);
         updateSaveButton();
       });
-      action.textContent = '完成';
-      action.title = '收起编辑器';
-      action.addEventListener('click', () => {
-        slot.editing = false;
-        renderEditableValueCell(td, name);
-      });
-
-      shell.appendChild(content);
-      shell.appendChild(action);
-      td.appendChild(shell);
       syncDirtyState(td, name);
       updateSaveButton();
       if (focusTarget && typeof focusTarget.focus === 'function') {
@@ -668,19 +679,16 @@
       display.textContent = '(空)';
       display.classList.add('value-display-empty');
     }
-    content.appendChild(display);
-
-    action.textContent = '编辑';
-    action.title = '启用编辑';
-    action.addEventListener('click', () => {
-      slot.editing = true;
-      renderEditableValueCell(td, name);
-    });
-
-    shell.appendChild(content);
-    shell.appendChild(action);
-    td.appendChild(shell);
+    td.appendChild(display);
     syncDirtyState(td, name);
+  }
+
+  function rerenderEditableRow(tdRw, tdVal, name) {
+    if (!(tdVal instanceof HTMLElement)) {
+      return;
+    }
+    renderAccessCell(tdRw, name, tdVal);
+    renderEditableValueCell(tdVal, name);
   }
 
   function renderTable(props) {
@@ -717,7 +725,7 @@
         }
 
         const tdType = document.createElement('td'); appendTypeCell(tdType, entry.type);
-        const tdRw   = document.createElement('td'); tdRw.appendChild(createAccessBadge(writable));
+        const tdRw   = document.createElement('td');
         const tdVal  = document.createElement('td');
         const tdDesc = document.createElement('td'); tdDesc.textContent = entry.description || '';
 
@@ -735,8 +743,9 @@
               writable: true,
               editing: false,
             };
-            renderEditableValueCell(tdVal, name);
+            rerenderEditableRow(tdRw, tdVal, name);
           } else {
+            renderAccessCell(tdRw, name, tdVal);
             tdVal.textContent = value;
           }
         }
