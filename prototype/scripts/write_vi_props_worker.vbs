@@ -3,7 +3,7 @@ Option Explicit
 ' ===========================================================================
 ' write_vi_props_worker.vbs
 ' ===========================================================================
-' 通过 LabVIEW ActiveX/COM 将一组属性写回 VI 文件，并调用 SaveVI 落盘。
+' 通过 LabVIEW ActiveX/COM 将一组属性写回 VI 文件，并调用 SaveInstrument 落盘。
 '
 ' 本脚本由 write_vi_props.py 调度，不应直接运行。
 ' 镜像 read_vi_props_worker.vbs 的连接 / 重试 / 响应文件格式。
@@ -17,7 +17,7 @@ Option Explicit
 '   /targetExe          目标 LabVIEW.exe 路径（可选；有则精确匹配）
 '   /expectedDirectory  预期的 ApplicationDirectory（可选）
 '   /expectedVersion    预期的 Version 前缀，例如 "17.0"（可选）
-'   /save               1=写完后调用 SaveVI（默认）；0=不保存
+'   /save               1=写完后调用 SaveInstrument（默认）；0=不保存
 '
 ' 请求文件格式（ASCII 编码，每行一对 key=value）
 ' ---------------------------------------------
@@ -46,7 +46,7 @@ Option Explicit
 ' ------------------------------------
 ' 本脚本基于 read_vi_props_worker.vbs 的访问模式编写，但写入语义与具体
 ' LabVIEW 版本相关：例如 FPTitle 需要前面板对象可访问；HistoryText 在
-' 某些 VI 上可能因元数据损坏而失败；SaveVI 要求 VI 处于可保存状态。
+' 某些 VI 上可能因元数据损坏而失败；SaveInstrument 要求 VI 处于可保存状态。
 ' 单个属性写入失败会被独立报告，不会阻塞其他属性的写入。
 ' ===========================================================================
 
@@ -178,10 +178,10 @@ Sub Main()
     If doSave Then
         On Error Resume Next
         Err.Clear
-        app.SaveVI viPath
+        vi.SaveInstrument
         If Err.Number <> 0 Then
             saveOk = False
-            saveErr = "SaveVI failed: " & Err.Description
+            saveErr = "SaveInstrument failed: " & Err.Description
             Err.Clear
         End If
         On Error GoTo 0

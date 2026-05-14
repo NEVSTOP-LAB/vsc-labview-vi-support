@@ -4,7 +4,7 @@
 write_vi_props.py
 =================
 
-通过 LabVIEW ActiveX/COM 将一组属性写回 VI 文件，并调用 SaveVI 落盘。
+通过 LabVIEW ActiveX/COM 将一组属性写回 VI 文件，并调用 SaveInstrument 落盘。
 
 与 read_vi_props.py 共享版本识别 / 安装定位 / 位数匹配 / Base64 工具，
 实际写入由 write_vi_props_worker.vbs 完成（与读 worker 对称）。
@@ -16,7 +16,7 @@ write_vi_props.py
 本脚本基于 read_vi_props.py / read_vi_props_worker.vbs 的访问模式编写，
 属于 "best-effort" 实现，需要在真实 LabVIEW 环境中验证：
 - 单个属性写入失败会被独立报告（同 read 行为），不会阻塞其他属性。
-- 写入完成后，默认调用 ``app.SaveVI viPath`` 将更改写入磁盘。
+- 写入完成后，默认调用 ``vi.SaveInstrument`` 将更改写入磁盘。
 - ``FPTitle`` 通过 ``vi.FP.Title`` 写入；若 FP 对象不可访问会被记录为失败。
 """
 
@@ -148,7 +148,7 @@ def _build_request_lines(updates: dict) -> list[str]:
 def _write_request_file(updates: dict) -> str:
     handle = tempfile.NamedTemporaryFile(
         prefix="labview-vi-write-req-", suffix=".in",
-        mode="w", encoding="ascii", delete=False, newline="\r\n",
+        mode="w", encoding="ascii", delete=False, newline="",
     )
     try:
         for line in _build_request_lines(updates):
@@ -305,7 +305,7 @@ def write_vi_props(
     save: bool = True,
 ) -> dict:
     """
-    将一组属性写回 LabVIEW VI，并（可选）调用 SaveVI 落盘。
+    将一组属性写回 LabVIEW VI，并（可选）调用 SaveInstrument 落盘。
 
     参数
     ----
@@ -315,7 +315,7 @@ def write_vi_props(
                       （type 字段仅作显示，不影响转换）。
     labview_version : 显式指定目标 LabVIEW 版本（省略时从 VI 头自动识别）。
     labview_bitness : 显式指定位数。
-    save            : 写入完成后是否调用 SaveVI（默认 True）。
+    save            : 写入完成后是否调用 SaveInstrument（默认 True）。
 
     返回值
     ------
@@ -372,7 +372,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--labview-bitness",
                         help="显式指定目标位数，例如 x86、x64")
     parser.add_argument("--no-save", action="store_true",
-                        help="只写属性，不调用 SaveVI")
+                        help="只写属性，不调用 SaveInstrument")
     parser.add_argument("--verbose", action="store_true",
                         help="将版本选择与命中诊断输出到 stderr")
     return parser
