@@ -29,8 +29,12 @@ import { resolveScriptPaths, type ScriptPaths } from '../scripts/scriptPaths';
 export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViDocument> {
   public static readonly viewType = 'labview-vi-support.viEditor';
 
+  public static cacheRoot(context: vscode.ExtensionContext): string {
+    return path.join(context.globalStorageUri.fsPath, 'vi-cache');
+  }
+
   public static register(context: vscode.ExtensionContext): vscode.Disposable {
-    const cacheRoot = path.join(context.globalStorageUri.fsPath, 'vi-cache');
+    const cacheRoot = ViEditorProvider.cacheRoot(context);
     const cache = new ViCache(cacheRoot);
     const scripts = resolveScriptPaths(context.extensionPath);
     const provider = new ViEditorProvider(context, cache, scripts);

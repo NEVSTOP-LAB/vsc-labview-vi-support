@@ -32,6 +32,8 @@ LabVIEW 通信，因此：
 
 ## 设置项
 
+- `labview-vi-support.cacheDirectory` — 当前缓存目录。该值由扩展自动维护；
+  可在设置界面通过“打开缓存目录 / 清理缓存”动作链接操作。
 - `labview-vi-support.scriptTimeoutMs` — 每次脚本调用的超时（毫秒）。
 
 ## 写入脚本的当前状态

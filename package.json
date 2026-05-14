@@ -30,7 +30,7 @@
     "Other"
   ],
   "activationEvents": [
-    "onCustomEditor:labview-vi-support.viEditor"
+    "onStartupFinished"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -38,6 +38,16 @@
       {
         "command": "labview-vi-support.helloWorld",
         "title": "%commands.helloWorld%",
+        "category": "%commands.category%"
+      },
+      {
+        "command": "labview-vi-support.openCacheDirectory",
+        "title": "%commands.openCacheDirectory%",
+        "category": "%commands.category%"
+      },
+      {
+        "command": "labview-vi-support.clearCache",
+        "title": "%commands.clearCache%",
         "category": "%commands.category%"
       }
     ],
@@ -55,6 +65,12 @@
     "configuration": {
       "title": "LabVIEW VI Support",
       "properties": {
+        "labview-vi-support.cacheDirectory": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "%config.cacheDirectory.markdownDescription%"
+        },
         "labview-vi-support.scriptTimeoutMs": {
           "type": "number",
           "default": 120000,
