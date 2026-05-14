@@ -17,7 +17,6 @@ write_vi_props.py
 属于 "best-effort" 实现，需要在真实 LabVIEW 环境中验证：
 - 单个属性写入失败会被独立报告（同 read 行为），不会阻塞其他属性。
 - 写入完成后，默认调用 ``vi.SaveInstrument`` 将更改写入磁盘。
-- ``FPTitle`` 通过 ``vi.FP.Title`` 写入；若 FP 对象不可访问会被记录为失败。
 """
 
 from __future__ import annotations
@@ -51,23 +50,17 @@ _WRITE_WORKER_SCRIPT = os.path.join(
 )
 
 # 与 worker 中 writableMeta 同步：可写属性名 -> ("type", "category")
-# category: "vi" 表示 vi.<Name>，"fp" 表示 vi.FP.<Name>
+# category: "vi" 表示 vi.<Name>
 _WRITABLE_PROPS: dict[str, tuple[str, str]] = {
     "Description":       ("String",  "vi"),
     "HistoryText":       ("String",  "vi"),
-    "PrintHeader":       ("String",  "vi"),
-    "PrintFooter":       ("String",  "vi"),
     "AllowDebugging":    ("Boolean", "vi"),
-    "BreakOnError":      ("Boolean", "vi"),
-    "SuspendWhenCalled": ("Boolean", "vi"),
     "ShowFPOnCall":      ("Boolean", "vi"),
-    "CloseAfterCall":    ("Boolean", "vi"),
-    "Scalable":          ("Boolean", "vi"),
-    "ShowScrollbars":    ("Boolean", "vi"),
-    "InlineSubVI":       ("Boolean", "vi"),
-    "ReentrantType":     ("Number",  "vi"),
-    "Priority":          ("Number",  "vi"),
-    "FPTitle":           ("String",  "fp"),
+    "CloseFPAfterCall":  ("Boolean", "vi"),
+    "IsReentrant":       ("Boolean", "vi"),
+    "RunOnOpen":         ("Boolean", "vi"),
+    "PreferredExecSystem": ("Number",  "vi"),
+    "ExecPriority":      ("Number",  "vi"),
 }
 
 

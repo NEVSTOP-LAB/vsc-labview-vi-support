@@ -45,8 +45,8 @@ Option Explicit
 ' 注意（需要在真实 LabVIEW 环境中验证）
 ' ------------------------------------
 ' 本脚本基于 read_vi_props_worker.vbs 的访问模式编写，但写入语义与具体
-' LabVIEW 版本相关：例如 FPTitle 需要前面板对象可访问；HistoryText 在
-' 某些 VI 上可能因元数据损坏而失败；SaveInstrument 要求 VI 处于可保存状态。
+' LabVIEW 版本相关：例如 HistoryText 在某些 VI 上可能因元数据损坏而失败；
+' SaveInstrument 要求 VI 处于可保存状态。
 ' 单个属性写入失败会被独立报告，不会阻塞其他属性的写入。
 ' ===========================================================================
 
@@ -94,25 +94,18 @@ connectedDirectory = ""
 
 ' 可写属性元数据：name=>"type|category"
 '   category: vi   (vi.<Name>)
-'             fp   (vi.FP.<Name>)
 Dim writableMeta
 Set writableMeta = CreateObject("Scripting.Dictionary")
 writableMeta.CompareMode = 1 ' textual
 writableMeta.Add "Description",       "String|vi"
 writableMeta.Add "HistoryText",       "String|vi"
-writableMeta.Add "PrintHeader",       "String|vi"
-writableMeta.Add "PrintFooter",       "String|vi"
 writableMeta.Add "AllowDebugging",    "Boolean|vi"
-writableMeta.Add "BreakOnError",      "Boolean|vi"
-writableMeta.Add "SuspendWhenCalled", "Boolean|vi"
 writableMeta.Add "ShowFPOnCall",      "Boolean|vi"
-writableMeta.Add "CloseAfterCall",    "Boolean|vi"
-writableMeta.Add "Scalable",          "Boolean|vi"
-writableMeta.Add "ShowScrollbars",    "Boolean|vi"
-writableMeta.Add "InlineSubVI",       "Boolean|vi"
-writableMeta.Add "ReentrantType",     "Number|vi"
-writableMeta.Add "Priority",          "Number|vi"
-writableMeta.Add "FPTitle",           "String|fp"
+writableMeta.Add "CloseFPAfterCall",  "Boolean|vi"
+writableMeta.Add "IsReentrant",       "Boolean|vi"
+writableMeta.Add "RunOnOpen",         "Boolean|vi"
+writableMeta.Add "PreferredExecSystem", "Number|vi"
+writableMeta.Add "ExecPriority",      "Number|vi"
 
 ' ---------------------------------------------------------------------------
 ' 顶层执行
@@ -378,19 +371,13 @@ Sub AssignProp(ByRef obj, ByVal propName, ByVal propType, ByVal newVal)
     Select Case propName
         Case "Description"        : obj.Description       = CStr(newVal)
         Case "HistoryText"        : obj.HistoryText       = CStr(newVal)
-        Case "PrintHeader"        : obj.PrintHeader       = CStr(newVal)
-        Case "PrintFooter"        : obj.PrintFooter       = CStr(newVal)
         Case "AllowDebugging"     : obj.AllowDebugging    = CoerceBool(newVal)
-        Case "BreakOnError"       : obj.BreakOnError      = CoerceBool(newVal)
-        Case "SuspendWhenCalled"  : obj.SuspendWhenCalled = CoerceBool(newVal)
         Case "ShowFPOnCall"       : obj.ShowFPOnCall      = CoerceBool(newVal)
-        Case "CloseAfterCall"     : obj.CloseAfterCall    = CoerceBool(newVal)
-        Case "Scalable"           : obj.Scalable          = CoerceBool(newVal)
-        Case "ShowScrollbars"     : obj.ShowScrollbars    = CoerceBool(newVal)
-        Case "InlineSubVI"        : obj.InlineSubVI       = CoerceBool(newVal)
-        Case "ReentrantType"      : obj.ReentrantType     = CLng(newVal)
-        Case "Priority"           : obj.Priority          = CLng(newVal)
-        Case "FPTitle"            : obj.Title             = CStr(newVal)
+        Case "CloseFPAfterCall"   : obj.CloseFPAfterCall  = CoerceBool(newVal)
+        Case "IsReentrant"        : obj.IsReentrant       = CoerceBool(newVal)
+        Case "RunOnOpen"          : obj.RunOnOpen         = CoerceBool(newVal)
+        Case "PreferredExecSystem": obj.PreferredExecSystem = CLng(newVal)
+        Case "ExecPriority"       : obj.ExecPriority      = CLng(newVal)
         Case Else
             Err.Raise vbObjectError + 200, , "Unsupported property: " & propName
     End Select
@@ -403,18 +390,13 @@ Function ReadBackVi(ByRef viRef, ByVal propName)
     Select Case propName
         Case "Description"        : val = CStr(viRef.Description)
         Case "HistoryText"        : val = CStr(viRef.HistoryText)
-        Case "PrintHeader"        : val = CStr(viRef.PrintHeader)
-        Case "PrintFooter"        : val = CStr(viRef.PrintFooter)
         Case "AllowDebugging"     : val = CStr(viRef.AllowDebugging)
-        Case "BreakOnError"       : val = CStr(viRef.BreakOnError)
-        Case "SuspendWhenCalled"  : val = CStr(viRef.SuspendWhenCalled)
         Case "ShowFPOnCall"       : val = CStr(viRef.ShowFPOnCall)
-        Case "CloseAfterCall"     : val = CStr(viRef.CloseAfterCall)
-        Case "Scalable"           : val = CStr(viRef.Scalable)
-        Case "ShowScrollbars"     : val = CStr(viRef.ShowScrollbars)
-        Case "InlineSubVI"        : val = CStr(viRef.InlineSubVI)
-        Case "ReentrantType"      : val = CStr(viRef.ReentrantType)
-        Case "Priority"           : val = CStr(viRef.Priority)
+        Case "CloseFPAfterCall"   : val = CStr(viRef.CloseFPAfterCall)
+        Case "IsReentrant"        : val = CStr(viRef.IsReentrant)
+        Case "RunOnOpen"          : val = CStr(viRef.RunOnOpen)
+        Case "PreferredExecSystem": val = CStr(viRef.PreferredExecSystem)
+        Case "ExecPriority"       : val = CStr(viRef.ExecPriority)
     End Select
     If Err.Number <> 0 Then val = "" : Err.Clear
     On Error GoTo 0

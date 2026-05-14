@@ -38,19 +38,21 @@
 
   // Enum metadata for known number-typed properties (mirrors read_vi_props.py).
   const NUMBER_ENUMS = {
-    ReentrantType: [
-      { value: 0, label: '0 (不可重入)' },
-      { value: 1, label: '1 (预分配副本)' },
-      { value: 2, label: '2 (共享副本)' },
+    PreferredExecSystem: [
+      { value: 1, label: '1 (用户界面)' },
+      { value: 2, label: '2 (标准)' },
+      { value: 3, label: '3 (仪器 I/O)' },
+      { value: 4, label: '4 (数据采集)' },
+      { value: 5, label: '5 (其他 1)' },
+      { value: 6, label: '6 (其他 2)' },
+      { value: 7, label: '7 (与调用者相同)' },
     ],
-    Priority: [
-      { value: 0, label: '0 (后台)' },
-      { value: 1, label: '1 (正常)' },
-      { value: 2, label: '2 (较高)' },
-      { value: 3, label: '3 (高)' },
-      { value: 4, label: '4 (时间关键)' },
-      { value: 5, label: '5 (子程序)' },
-    ],
+  };
+  const DEFAULT_GROUP_LABELS = {
+    identity: '基础信息',
+    execution: '执行设置',
+    panel: '前面板行为',
+    other: '其他属性',
   };
 
   // -------------------------------------------------------------------------
@@ -458,6 +460,41 @@
   // -------------------------------------------------------------------------
   // Property table
   // -------------------------------------------------------------------------
+  function collectPropGroups(props) {
+    const groups = [];
+    const seen = new Map();
+
+    for (const name of Object.keys(props)) {
+      const entry = props[name] || {};
+      const key = typeof entry.group === 'string' && entry.group ? entry.group : 'other';
+      let bucket = seen.get(key);
+      if (!bucket) {
+        bucket = {
+          key,
+          label: (typeof entry.groupLabel === 'string' && entry.groupLabel)
+            || DEFAULT_GROUP_LABELS[key]
+            || DEFAULT_GROUP_LABELS.other,
+          names: [],
+        };
+        seen.set(key, bucket);
+        groups.push(bucket);
+      }
+      bucket.names.push(name);
+    }
+
+    return groups;
+  }
+
+  function appendGroupRow(label) {
+    const tr = document.createElement('tr');
+    tr.className = 'group-row';
+    const td = document.createElement('td');
+    td.colSpan = 5;
+    td.textContent = label;
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  }
+
   function renderTable(props) {
     // Reset row tracking; rebuild from scratch each refresh.
     Object.keys(propRows).forEach((k) => delete propRows[k]);
@@ -469,43 +506,58 @@
       return;
     }
 
-    for (const name of names) {
-      const entry = props[name];
-      const tr = document.createElement('tr');
-      tr.dataset.prop = name;
-      const writable = !!entry.writable;
-      if (!writable) { tr.classList.add('row-readonly'); }
+    for (const group of collectPropGroups(props)) {
+      appendGroupRow(group.label);
 
-      const tdName = document.createElement('td'); tdName.textContent = name;
-      const tdType = document.createElement('td'); tdType.textContent = entry.type || '';
-      const tdRw   = document.createElement('td'); tdRw.textContent   = writable ? '读写' : '只读';
-      const tdVal  = document.createElement('td');
-      const tdDesc = document.createElement('td'); tdDesc.textContent = entry.description || '';
+      for (const name of group.names) {
+        const entry = props[name];
+        const tr = document.createElement('tr');
+        tr.dataset.prop = name;
+        const writable = !!entry.writable;
+        if (!writable) { tr.classList.add('row-readonly'); }
 
-      if (!entry.ok) {
-        tdVal.textContent = '[不可用] ' + (entry.error || '');
-        tdVal.style.opacity = '0.6';
-      } else {
-        const value = entry.value == null ? '' : String(entry.value);
-        if (writable) {
-          buildEditor(tdVal, name, entry.type, value);
-          propRows[name] = {
-            original: value,
-            current: value,
-            type: entry.type,
-            writable: true,
-          };
-        } else {
-          tdVal.textContent = value;
+        const tdName = document.createElement('td');
+        const label = document.createElement('div');
+        label.className = 'prop-name-label';
+        label.textContent = entry.displayName || name;
+        tdName.appendChild(label);
+        if (entry.displayName && entry.displayName !== name) {
+          const alias = document.createElement('div');
+          alias.className = 'prop-name-alias';
+          alias.textContent = name;
+          tdName.appendChild(alias);
         }
-      }
 
-      tr.appendChild(tdName);
-      tr.appendChild(tdType);
-      tr.appendChild(tdRw);
-      tr.appendChild(tdVal);
-      tr.appendChild(tdDesc);
-      tbody.appendChild(tr);
+        const tdType = document.createElement('td'); tdType.textContent = entry.type || '';
+        const tdRw   = document.createElement('td'); tdRw.textContent   = writable ? '读写' : '只读';
+        const tdVal  = document.createElement('td');
+        const tdDesc = document.createElement('td'); tdDesc.textContent = entry.description || '';
+
+        if (!entry.ok) {
+          tdVal.textContent = '[不可用] ' + (entry.error || '');
+          tdVal.style.opacity = '0.6';
+        } else {
+          const value = entry.value == null ? '' : String(entry.value);
+          if (writable) {
+            buildEditor(tdVal, name, entry.type, value);
+            propRows[name] = {
+              original: value,
+              current: value,
+              type: entry.type,
+              writable: true,
+            };
+          } else {
+            tdVal.textContent = value;
+          }
+        }
+
+        tr.appendChild(tdName);
+        tr.appendChild(tdType);
+        tr.appendChild(tdRw);
+        tr.appendChild(tdVal);
+        tr.appendChild(tdDesc);
+        tbody.appendChild(tr);
+      }
     }
     updateSaveButton();
   }
@@ -561,8 +613,7 @@
       input.value = value;
       input.addEventListener('input', () => onChange(input.value));
       td.appendChild(input);
-    } else if (type === 'String' && (name === 'Description' || name === 'HistoryText'
-                                  || name === 'PrintHeader' || name === 'PrintFooter')) {
+    } else if (type === 'String' && (name === 'Description' || name === 'HistoryText')) {
       const ta = document.createElement('textarea');
       ta.value = value;
       ta.addEventListener('input', () => onChange(ta.value));

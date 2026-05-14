@@ -8,6 +8,7 @@ import {
   type PropsJsonEnvelope,
   type PropsResponse,
 } from './propsParser';
+import { decorateProps, WRITABLE_PROP_TYPES } from './propMetadata';
 import type { ScriptPaths } from './scriptPaths';
 
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -16,24 +17,6 @@ const VI_VERSION_SCAN_BYTES = 512;
 const VI_VERSION_MARKER = Buffer.from([0x00, 0x00, 0x00, 0xa0]);
 const PE_MACHINE_I386 = 0x014c;
 const PE_MACHINE_AMD64 = 0x8664;
-
-const WRITABLE_PROP_TYPES: Record<string, 'String' | 'Boolean' | 'Number'> = {
-  Description: 'String',
-  HistoryText: 'String',
-  PrintHeader: 'String',
-  PrintFooter: 'String',
-  AllowDebugging: 'Boolean',
-  BreakOnError: 'Boolean',
-  SuspendWhenCalled: 'Boolean',
-  ShowFPOnCall: 'Boolean',
-  CloseAfterCall: 'Boolean',
-  Scalable: 'Boolean',
-  ShowScrollbars: 'Boolean',
-  InlineSubVI: 'Boolean',
-  ReentrantType: 'Number',
-  Priority: 'Number',
-  FPTitle: 'String',
-};
 
 export interface LabVIEWRuntimeOptions {
   timeoutMs?: number;
@@ -217,7 +200,7 @@ export async function writeViProps(
     if (!response.ok) {
       throw new Error(response.reason || 'Write props worker failed.');
     }
-    return toPropsEnvelope(absViPath, response);
+    return toPropsEnvelope(absViPath, response, { includeUnavailable: true });
   } finally {
     try {
       await fs.promises.unlink(requestPath);
@@ -529,11 +512,26 @@ function decodeBase64Utf8(value: string): string {
   return Buffer.from(value, 'base64').toString('utf8').replace(/^\ufeff/, '');
 }
 
-function toPropsEnvelope(viPath: string, response: PropsResponse): PropsJsonEnvelope {
+function formatLabVIEWVersion(version: LabVIEWVersion | null): string | null {
+  if (!version) {
+    return null;
+  }
+  return `${version.major}.${version.minor}`;
+}
+
+async function toPropsEnvelope(
+  viPath: string,
+  response: PropsResponse,
+  options: { includeUnavailable?: boolean } = {},
+): Promise<PropsJsonEnvelope> {
+  const savedVersion = formatLabVIEWVersion(await readViSavedVersion(viPath));
   const envelope: PropsJsonEnvelope = {
     viPath,
     lvVersion: response.connectedVersion || null,
-    props: response.props,
+    props: decorateProps(response.props, {
+      includeUnavailable: options.includeUnavailable,
+      savedVersion,
+    }),
   };
   if (typeof response.saved === 'boolean') {
     envelope.saved = response.saved;

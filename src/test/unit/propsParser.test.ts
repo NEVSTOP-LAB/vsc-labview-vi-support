@@ -110,18 +110,20 @@ suite('propsParser.parsePropsJson', () => {
       props: {
         Description: {
           ok: true, type: 'String', value: 'd', error: null,
-          writable: true, description: 'desc',
+          writable: true, description: 'desc', displayName: '说明', group: 'identity', groupLabel: '基础信息',
         },
-        Priority: {
+        ExecPriority: {
           ok: true, type: 'Number', value: '1', error: null,
-          writable: true, description: 'p',
+          writable: true, description: 'p', displayName: '执行优先级', group: 'execution', groupLabel: '执行设置',
         },
       },
     }));
     assert.strictEqual(env.viPath, 'C:\\path\\main.vi');
     assert.strictEqual(env.lvVersion, '17.0');
     assert.strictEqual(env.props['Description'].writable, true);
-    assert.strictEqual(env.props['Priority'].value, '1');
+    assert.strictEqual(env.props['Description'].displayName, '说明');
+    assert.strictEqual(env.props['ExecPriority'].groupLabel, '执行设置');
+    assert.strictEqual(env.props['ExecPriority'].value, '1');
   });
 
   test('accepts the write envelope (saved/save_error)', () => {
@@ -161,6 +163,9 @@ suite('propsParser cached props JSON', () => {
           error: null,
           writable: true,
           description: 'VI 描述（属性对话框中的说明文字）',
+          displayName: '说明',
+          group: 'identity',
+          groupLabel: '基础信息',
         },
       },
     });
@@ -168,6 +173,8 @@ suite('propsParser cached props JSON', () => {
     assert.strictEqual(cached['_cacheVersion'], PROPS_CACHE_VERSION);
     const parsed = parseCachedPropsJson(JSON.stringify(cached));
     assert.strictEqual(parsed.props['Description'].description, 'VI 描述（属性对话框中的说明文字）');
+    assert.strictEqual(parsed.props['Description'].displayName, '说明');
+    assert.strictEqual(parsed.props['Description'].groupLabel, '基础信息');
     assert.strictEqual(parsed.saved, true);
   });
 

@@ -32,9 +32,12 @@ export interface PropEntry {
   type: PropType | string;
   value: string | null;
   error: string | null;
-  /** Filled in by the Python wrapper from `_PROP_META`. */
+  /** Filled in by the runtime metadata layer. */
   writable?: boolean;
   description?: string;
+  displayName?: string;
+  group?: string;
+  groupLabel?: string;
 }
 
 export interface PropsResponse {
@@ -137,7 +140,7 @@ export interface PropsJsonEnvelope {
   props: Record<string, PropEntry>;
 }
 
-export const PROPS_CACHE_VERSION = 1;
+export const PROPS_CACHE_VERSION = 2;
 
 export function toCachedPropsJson(envelope: PropsJsonEnvelope): Record<string, unknown> {
   const cached: Record<string, unknown> = {
@@ -179,6 +182,9 @@ export function parsePropsJson(jsonText: string): PropsJsonEnvelope {
       error:       (entry['error'] as string | null) ?? null,
       writable:    typeof entry['writable']    === 'boolean' ? entry['writable']    as boolean : undefined,
       description: typeof entry['description'] === 'string'  ? entry['description'] as string  : undefined,
+      displayName: typeof entry['displayName'] === 'string'  ? entry['displayName'] as string  : undefined,
+      group:       typeof entry['group']       === 'string'  ? entry['group']       as string  : undefined,
+      groupLabel:  typeof entry['groupLabel']  === 'string'  ? entry['groupLabel']  as string  : undefined,
     };
   }
 
