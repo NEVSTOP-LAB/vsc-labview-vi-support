@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="{{CSP}}" />
@@ -9,20 +9,20 @@
   </head>
   <body>
     <div id="app">
-      <div class="toolbar" role="toolbar" aria-label="Panels">
-        <button id="btn-fp"     class="tb-btn"  title="Show only the front panel">FP Only</button>
-        <button id="btn-bd"     class="tb-btn"  title="Show only the block diagram">BD Only</button>
-        <button id="btn-both"   class="tb-btn active" title="Show both panels">Both</button>
+      <div class="toolbar" role="toolbar" aria-label="面板">
+        <button id="btn-fp"     class="tb-btn"  title="只显示前面板">仅前面板</button>
+        <button id="btn-bd"     class="tb-btn"  title="只显示程序框图">仅程序框图</button>
+        <button id="btn-both"   class="tb-btn active" title="同时显示前面板和程序框图">两者皆显示</button>
         <span class="tb-spacer"></span>
-        <button id="btn-table"  class="tb-btn active" title="Toggle the property table">Toggle Table</button>
+        <button id="btn-table"  class="tb-btn active" title="显示 / 隐藏属性表">属性表</button>
         <span class="tb-spacer"></span>
-        <button id="btn-zoom-out" class="tb-btn small" title="Zoom out">−</button>
+        <button id="btn-zoom-out" class="tb-btn small" title="缩小">−</button>
         <span id="zoom-label" class="zoom-label">100%</span>
-        <button id="btn-zoom-in"  class="tb-btn small" title="Zoom in">+</button>
-        <button id="btn-zoom-reset" class="tb-btn small" title="Reset view (or double-click image)">Reset</button>
+        <button id="btn-zoom-in"  class="tb-btn small" title="放大">+</button>
+        <button id="btn-zoom-reset" class="tb-btn small" title="自适应窗口（也可双击图像）">重置</button>
         <span class="tb-spacer"></span>
-        <button id="btn-save"   class="tb-btn primary" title="Write changes back to the .vi file" disabled>Save</button>
-        <button id="btn-reload" class="tb-btn"  title="Re-export images and re-read properties">Reload</button>
+        <button id="btn-save"   class="tb-btn primary" title="把改动写回 .vi 文件" disabled>保存</button>
+        <button id="btn-reload" class="tb-btn"  title="重新导出图像并重新读取属性">刷新</button>
       </div>
 
       <div id="status" class="status" hidden></div>
@@ -31,17 +31,17 @@
       <div id="main" class="main">
         <div id="image-area" class="image-area">
           <div class="image-pane" data-pane="fp">
-            <div class="pane-label">Front Panel</div>
+            <div class="pane-label">前面板</div>
             <div class="viewport" data-viewport="fp">
-              <img class="vi-image" data-img="fp" alt="Front panel" draggable="false" />
-              <div class="placeholder" data-placeholder="fp">No front panel image yet.</div>
+              <img class="vi-image" data-img="fp" alt="前面板" draggable="false" />
+              <div class="placeholder" data-placeholder="fp">尚未导出前面板图像。</div>
             </div>
           </div>
           <div class="image-pane" data-pane="bd">
-            <div class="pane-label">Block Diagram</div>
+            <div class="pane-label">程序框图</div>
             <div class="viewport" data-viewport="bd">
-              <img class="vi-image" data-img="bd" alt="Block diagram" draggable="false" />
-              <div class="placeholder" data-placeholder="bd">No block diagram image yet.</div>
+              <img class="vi-image" data-img="bd" alt="程序框图" draggable="false" />
+              <div class="placeholder" data-placeholder="bd">尚未导出程序框图图像。</div>
             </div>
           </div>
         </div>
@@ -50,15 +50,15 @@
           <table id="props-table" class="props-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Type</th>
-                <th>R/W</th>
-                <th>Value</th>
-                <th>Description</th>
+                <th>属性名</th>
+                <th>类型</th>
+                <th>读写</th>
+                <th>取值</th>
+                <th>说明</th>
               </tr>
             </thead>
             <tbody id="props-tbody">
-              <tr><td colspan="5" class="empty">Loading…</td></tr>
+              <tr><td colspan="5" class="empty">加载中…</td></tr>
             </tbody>
           </table>
         </div>

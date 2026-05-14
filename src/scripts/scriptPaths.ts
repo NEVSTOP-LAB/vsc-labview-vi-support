@@ -1,15 +1,14 @@
 import * as path from 'path';
 
 /**
- * Locate prototype Python scripts that ship inside the extension package.
+ * 定位扩展打包后随附的 Python 原型脚本。
  *
- * The prototype directory is copied verbatim into the extension at install
- * time and contains:
+ * `prototype/` 目录会被原样打包进扩展，包含：
  *   - save_vi_panel_image.py
  *   - read_vi_props.py + read_vi_props_worker.vbs
  *   - write_vi_props.py + write_vi_props_worker.vbs
  *
- * Pure logic — no vscode imports — so it can be unit-tested directly.
+ * 本模块为纯逻辑（不依赖 vscode 模块），可直接做单元测试。
  */
 export interface ScriptPaths {
   readonly root: string;

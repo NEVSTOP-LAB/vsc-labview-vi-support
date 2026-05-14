@@ -3,24 +3,23 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /**
- * MD5-keyed cache for VI artifacts (FP/BD images and properties JSON).
+ * 以 MD5 为键的 VI 衍生物缓存（前面板/程序框图图像、属性 JSON）。
  *
- * Layout:
+ * 目录结构：
  *
  *   <root>/
  *     <md5-of-vi-file>/
  *       fp.png
  *       bd.png
  *       props.json
- *       meta.json     ← {"viPath": "...", "createdAt": <ms>}
+ *       meta.json     ← {"viPath": "...", "createdAt": <ms>, "hash": "..."}
  *
- * The cache is content-addressed by MD5 of the .vi file bytes. After a
- * successful write-back to the .vi file, the host computes a new MD5 and
- * looks up (or creates) a fresh cache entry. The previous entry is
- * intentionally left on disk so re-opening a still-cached version is fast.
+ * 缓存通过 .vi 文件字节内容的 MD5 进行内容寻址。当扩展把改动写回 .vi
+ * 之后，宿主会重新计算 MD5 并查询/创建新条目。旧条目会保留在磁盘上，
+ * 这样再次打开历史版本时仍是即时的。
  *
- * Pure logic — no vscode imports. The caller (the editor provider) supplies
- * the cache root, normally `context.globalStorageUri.fsPath + "/vi-cache"`.
+ * 本模块为纯逻辑（不依赖 vscode）。调用方（编辑器宿主）在构造时传入
+ * 缓存根目录，通常是 `context.globalStorageUri.fsPath + "/vi-cache"`。
  */
 
 export interface CacheArtifacts {

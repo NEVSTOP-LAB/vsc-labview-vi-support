@@ -1,9 +1,9 @@
 /**
- * Parse the response file format emitted by:
+ * 解析以下两个 worker 输出的响应文件：
  *   - read_vi_props_worker.vbs
  *   - write_vi_props_worker.vbs
  *
- * Both share the same key=value layout:
+ * 二者共用同一种 `key=value` 行格式：
  *
  *   ok=1|0
  *   selection=<ascii>
@@ -11,18 +11,18 @@
  *   connected_version_b64=<base64-utf8>
  *   connected_directory_b64=<base64-utf8>
  *   attempts=<int>
- *   saved=1|0                       (write only)
- *   save_errmsg_b64=<base64-utf8>   (write only, when saved=0)
+ *   saved=1|0                       (仅写 worker)
+ *   save_errmsg_b64=<base64-utf8>   (仅写 worker，且 saved=0 时)
  *   prop_<Name>_type=String|Boolean|Number
  *   prop_<Name>_ok=1|0
  *   prop_<Name>_val=<base64-utf8>     (ok=1)
  *   prop_<Name>_errmsg=<base64-utf8>  (ok=0)
  *
- * In practice the props are returned by the read/write Python wrappers as
- * already-parsed JSON, so this parser is exercised in two ways:
- *  1. Direct: `parsePropsResponseText` works on the raw response file.
- *  2. JSON pass-through: `parsePropsJson` validates the JSON envelope
- *     produced by the Python entry points before exposing it to the UI.
+ * 实际运行时，read/write 的 Python 入口会把上述结果再以 JSON 输出到 stdout，
+ * 因此本模块同时提供两种解析入口：
+ *   1. `parsePropsResponseText` —— 直接解析原始响应文件；
+ *   2. `parsePropsJson`         —— 校验 Python 包装层吐出的 JSON 信封，
+ *                                  随后再喂给 WebView。
  */
 
 export type PropType = 'String' | 'Boolean' | 'Number';

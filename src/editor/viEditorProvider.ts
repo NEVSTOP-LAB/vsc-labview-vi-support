@@ -7,7 +7,6 @@ import { ViCache, type CacheEntry } from '../cache/viCache';
 import {
   parsePropsJson,
   type PropsJsonEnvelope,
-  type PropEntry,
 } from '../scripts/propsParser';
 import {
   PythonScriptError,
@@ -17,14 +16,13 @@ import {
 import { resolveScriptPaths, type ScriptPaths } from '../scripts/scriptPaths';
 
 /**
- * Custom editor for LabVIEW `.vi` and `.vit` files.
+ * LabVIEW `.vi` / `.vit` 文件的自定义编辑器。
  *
- * Responsibilities:
- *   1. Compute MD5 of the source VI; lookup or create a cache entry.
- *   2. Lazily invoke the prototype Python scripts to materialize FP/BD images
- *      and a props JSON if the cache is missing them.
- *   3. Host the WebView UI and handle its postMessage protocol.
- *   4. On save, invoke `write_vi_props.py`, then re-cache and reload.
+ * 主要职责：
+ *   1. 计算源 VI 的 MD5，查询或新建对应的缓存条目；
+ *   2. 按需调用内置 Python 原型脚本，懒加载 FP/BD 图像和属性 JSON；
+ *   3. 承载 WebView UI，并处理其 postMessage 通信协议；
+ *   4. 在保存时调用 `write_vi_props.py`，再重新计算 MD5 并刷新视图。
  */
 export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViDocument> {
   public static readonly viewType = 'labview-vi-support.viEditor';
@@ -177,7 +175,7 @@ class ViEditorSession {
       case 'saveProps': {
         const updates = message['updates'];
         if (typeof updates !== 'object' || updates === null) {
-          await this.postError('Invalid saveProps payload.');
+          await this.postError('saveProps 消息载荷无效。');
           return;
         }
         await this.savePropsAndReload(updates as Record<string, unknown>);
@@ -199,7 +197,7 @@ class ViEditorSession {
     try {
       entry = await this.cache.entryForFile(viPath);
     } catch (err) {
-      await this.postError(`Failed to read VI file: ${(err as Error).message}`);
+      await this.postError(`无法读取 VI 文件: ${(err as Error).message}`);
       return;
     }
     this.currentEntry = entry;
@@ -263,7 +261,7 @@ class ViEditorSession {
       );
     } catch (err) {
       const detail = err instanceof PythonScriptError ? err.message : String(err);
-      await this.postError(`${panel.toUpperCase()} export failed: ${detail}`);
+      await this.postError(`${panel === 'fp' ? '前面板' : '程序框图'}导出失败: ${detail}`);
     }
   }
 
@@ -274,12 +272,12 @@ class ViEditorSession {
         [this.document.uri.fsPath, '--format', 'json'],
         this.pythonOptions,
       );
-      // Validate JSON before persisting.
+      // 持久化前先校验 JSON。
       const env = parsePropsJson(result.stdout);
       await this.cache.writeProps(entry, env);
     } catch (err) {
       const detail = err instanceof PythonScriptError ? err.message : String(err);
-      await this.postError(`Read properties failed: ${detail}`);
+      await this.postError(`读取属性失败: ${detail}`);
     }
   }
 
@@ -295,7 +293,7 @@ class ViEditorSession {
       );
     } catch (err) {
       const detail = err instanceof PythonScriptError ? err.message : String(err);
-      await this.postError(`Write properties failed: ${detail}`);
+      await this.postError(`写入属性失败: ${detail}`);
       return;
     }
 
@@ -303,17 +301,17 @@ class ViEditorSession {
     try {
       const env = parsePropsJson(result.stdout);
       if (env.saved === false) {
-        saveError = env.saveError ?? 'SaveVI reported failure.';
+        saveError = env.saveError ?? 'SaveVI 调用失败。';
       }
-      // Per-property errors:
+      // 单个属性写入失败：
       const failures = Object.entries(env.props)
-        .filter(([, p]) => !(p as PropEntry).ok)
-        .map(([name, p]) => `${name}: ${(p as PropEntry).error ?? 'unknown'}`);
+        .filter(([, p]) => !p.ok)
+        .map(([name, p]) => `${name}: ${p.error ?? '未知错误'}`);
       if (failures.length > 0) {
-        await this.postError('Some properties failed to write:\n' + failures.join('\n'));
+        await this.postError('部分属性写入失败:\n' + failures.join('\n'));
       }
     } catch {
-      // tolerate malformed stdout — the VI is still saved.
+      // 容忍 stdout 解析失败 —— VI 仍然可能已经写盘成功。
     }
 
     if (saveError) {
@@ -333,6 +331,9 @@ class ViEditorSession {
     if (raw === null) {
       return null;
     }
+    // 通过 parsePropsJson 走一次校验，可在缓存被人为篡改、或后续 schema
+    // 升级导致旧条目不再兼容时安全地返回 null。代价仅为一次 JSON 往返，
+    // 而 props.json 体积很小，可以忽略不计。
     try {
       return parsePropsJson(JSON.stringify(raw));
     } catch {

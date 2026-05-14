@@ -1,14 +1,14 @@
-// LabVIEW VI Support — WebView client.
-// Vanilla JS, no runtime dependencies. Communicates with the extension host
-// via vscode.postMessage / window addEventListener('message').
+// LabVIEW VI Support — WebView 客户端。
+// 纯原生 JS，零运行时依赖。通过 vscode.postMessage / window 'message' 事件
+// 与扩展宿主通信。
 //
-// Inbound messages (from host):
+// 入站消息（host → webview）：
 //   { type: 'state', viPath, hash, fpImage, bdImage, props, errors, loading }
 //   { type: 'error', message }
-// Outbound messages (to host):
+// 出站消息（webview → host）：
 //   { type: 'ready' }
 //   { type: 'reload' }
-//   { type: 'saveProps', updates: { PropName: value, ... } }
+//   { type: 'saveProps', updates: { 属性名: 值, ... } }
 
 (function () {
   'use strict';
@@ -109,9 +109,9 @@
     if (state.props && state.props.props) {
       renderTable(state.props.props);
     } else if (state.loading && state.loading.props) {
-      tbody.innerHTML = '<tr><td colspan="5" class="empty">Loading properties…</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="empty">正在读取属性…</td></tr>';
     } else {
-      tbody.innerHTML = '<tr><td colspan="5" class="empty">No properties available.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="empty">没有可显示的属性。</td></tr>';
     }
     if (Array.isArray(state.errors) && state.errors.length > 0) {
       state.errors.forEach(appendError);
@@ -148,7 +148,7 @@
       img.onerror = () => {
         img.classList.remove('loaded');
         placeholder.classList.remove('hidden');
-        placeholder.textContent = 'Image failed to load.';
+        placeholder.textContent = '图像加载失败。';
       };
       // Cache-bust on hash change is implicit via different URI; force reload
       // when the same URI comes back after Reload by appending a timestamp.
@@ -158,7 +158,9 @@
       img.removeAttribute('src');
       img.classList.remove('loaded');
       placeholder.classList.remove('hidden');
-      placeholder.textContent = loading ? 'Loading…' : ('No ' + (panel === 'fp' ? 'front panel' : 'block diagram') + ' image yet.');
+      placeholder.textContent = loading
+        ? '加载中…'
+        : (panel === 'fp' ? '尚未导出前面板图像。' : '尚未导出程序框图图像。');
     }
   }
 
@@ -167,6 +169,9 @@
     const vs = viewState[panel];
     if (!vs.naturalW || !vs.naturalH) { return; }
     const rect = vp.getBoundingClientRect();
+    // 当面板被隐藏时，rect 是 0×0；此时直接返回，避免把缩放比夹到 ZOOM_MIN
+    // 之后再次显示时图像近乎不可见。
+    if (rect.width <= 0 || rect.height <= 0) { return; }
     const sx = rect.width / vs.naturalW;
     const sy = rect.height / vs.naturalH;
     const scale = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.min(sx, sy, 1)));
@@ -307,7 +312,7 @@
 
     const names = Object.keys(props);
     if (names.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" class="empty">No properties returned.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="empty">没有可显示的属性。</td></tr>';
       return;
     }
 
@@ -320,12 +325,12 @@
 
       const tdName = document.createElement('td'); tdName.textContent = name;
       const tdType = document.createElement('td'); tdType.textContent = entry.type || '';
-      const tdRw   = document.createElement('td'); tdRw.textContent   = writable ? 'R/W' : 'R';
+      const tdRw   = document.createElement('td'); tdRw.textContent   = writable ? '读写' : '只读';
       const tdVal  = document.createElement('td');
       const tdDesc = document.createElement('td'); tdDesc.textContent = entry.description || '';
 
       if (!entry.ok) {
-        tdVal.textContent = '[unavailable] ' + (entry.error || '');
+        tdVal.textContent = '[不可用] ' + (entry.error || '');
         tdVal.style.opacity = '0.6';
       } else {
         const value = entry.value == null ? '' : String(entry.value);
@@ -366,18 +371,20 @@
 
     if (type === 'Boolean') {
       const select = document.createElement('select');
-      ['True', 'False'].forEach((label) => {
+      // 显示中文，但 value 仍用 'True' / 'False'，便于后续序列化时与 VBScript
+      // 输出（"True" / "False"）保持一致。
+      [['True', '是 (True)'], ['False', '否 (False)']].forEach(([val, label]) => {
         const opt = document.createElement('option');
-        opt.value = label;
+        opt.value = val;
         opt.textContent = label;
         select.appendChild(opt);
       });
-      // Normalize value: VBScript prints "True"/"False"; tolerate -1/0/1.
+      // 规范化输入值：VBScript 输出 "True"/"False"；同时容忍 -1/0/1。
       const normalized = (value === 'True' || value === '1' || value === '-1') ? 'True' : 'False';
       select.value = normalized;
       select.addEventListener('change', () => onChange(select.value));
       td.appendChild(select);
-      // Persist normalized form so dirty-tracking is reliable.
+      // 用规范化后的值填回原始/当前态，确保脏检查可靠。
       const slot = propRows[name];
       if (slot) { slot.original = normalized; slot.current = normalized; }
     } else if (type === 'Number' && NUMBER_ENUMS[name]) {

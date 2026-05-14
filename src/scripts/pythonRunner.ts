@@ -1,9 +1,10 @@
 import { spawn, SpawnOptions } from 'child_process';
 
 /**
- * Thin wrapper around `child_process.spawn` for invoking the prototype Python
- * scripts. Pure logic — no vscode imports — fully unit-testable by injecting
- * a custom `spawnFn`.
+ * `child_process.spawn` 的轻量封装，用来调用内置的 Python 原型脚本。
+ *
+ * 本模块为纯逻辑（不依赖 vscode），通过注入自定义 `spawnFn` 即可在单元
+ * 测试中完全模拟子进程行为。
  */
 
 export interface SpawnedProcessResult {
