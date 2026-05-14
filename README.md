@@ -46,6 +46,8 @@
 ```bash
 npm install
 npm run compile        # 类型检查 + lint + esbuild 打包
+npm run package:vsix   # 生成本地 VSIX 安装包
+npm run load:local     # 生成 VSIX 并安装到本机 VS Code
 npm run test:unit      # 纯逻辑模块的 mocha 单元测试（无需 VS Code 运行时）
 npm test               # 完整集成测试（需要从网络下载 VS Code）
 ```

@@ -70,11 +70,20 @@ export async function runPythonScript(
   } = options;
 
   const args = [scriptPath, ...scriptArgs];
+  const childEnv = {
+    ...process.env,
+    ...env,
+    // Python on Windows may otherwise emit pipe stdout/stderr using the
+    // active ANSI code page, which corrupts Chinese JSON/error text when the
+    // extension decodes child output as UTF-8.
+    PYTHONUTF8: '1',
+    PYTHONIOENCODING: 'utf-8',
+  };
 
   return new Promise((resolve, reject) => {
     const child = spawnFn(pythonExecutable, args, {
       cwd,
-      env: env ? { ...process.env, ...env } : process.env,
+      env: childEnv,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });

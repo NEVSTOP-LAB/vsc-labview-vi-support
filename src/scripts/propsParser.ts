@@ -137,6 +137,24 @@ export interface PropsJsonEnvelope {
   props: Record<string, PropEntry>;
 }
 
+export const PROPS_CACHE_VERSION = 1;
+
+export function toCachedPropsJson(envelope: PropsJsonEnvelope): Record<string, unknown> {
+  const cached: Record<string, unknown> = {
+    _cacheVersion: PROPS_CACHE_VERSION,
+    vi_path: envelope.viPath,
+    lv_version: envelope.lvVersion,
+    props: envelope.props,
+  };
+  if (typeof envelope.saved === 'boolean') {
+    cached['saved'] = envelope.saved;
+  }
+  if (typeof envelope.saveError === 'string') {
+    cached['save_error'] = envelope.saveError;
+  }
+  return cached;
+}
+
 export function parsePropsJson(jsonText: string): PropsJsonEnvelope {
   const parsed: unknown = JSON.parse(jsonText);
   if (typeof parsed !== 'object' || parsed === null) {
@@ -176,4 +194,16 @@ export function parsePropsJson(jsonText: string): PropsJsonEnvelope {
     envelope.saveError = obj['save_error'] as string;
   }
   return envelope;
+}
+
+export function parseCachedPropsJson(jsonText: string): PropsJsonEnvelope {
+  const parsed: unknown = JSON.parse(jsonText);
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new Error('Cached props JSON must be an object.');
+  }
+  const obj = parsed as Record<string, unknown>;
+  if (obj['_cacheVersion'] !== PROPS_CACHE_VERSION) {
+    throw new Error(`Props cache version mismatch: expected ${PROPS_CACHE_VERSION}.`);
+  }
+  return parsePropsJson(jsonText);
 }

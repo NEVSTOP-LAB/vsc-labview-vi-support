@@ -6,7 +6,9 @@ import * as vscode from 'vscode';
 
 import { ViCache, type CacheEntry } from '../cache/viCache';
 import {
+  parseCachedPropsJson,
   parsePropsJson,
+  toCachedPropsJson,
   type PropsJsonEnvelope,
 } from '../scripts/propsParser';
 import {
@@ -235,6 +237,11 @@ class ViEditorSession {
       try { await fs.promises.unlink(entry.artifacts.propsJson); } catch { /* 文件不存在则忽略 */ }
     }
 
+    const cachedProps = await this.readCachedProps(entry);
+    if (cachedProps === null && this.cache.has(entry, 'propsJson')) {
+      try { await fs.promises.unlink(entry.artifacts.propsJson); } catch { /* 文件不存在则忽略 */ }
+    }
+
     if (forceRefresh) {
       // Wipe the on-disk artifacts but keep the directory; cheaper than
       // invalidate() since we want the same hash dir.
@@ -247,7 +254,7 @@ class ViEditorSession {
     await this.pushState({
       fpImage: this.cache.has(entry, 'fpImage') ? entry.artifacts.fpImage : null,
       bdImage: this.cache.has(entry, 'bdImage') ? entry.artifacts.bdImage : null,
-      props:   await this.readCachedProps(entry),
+      props:   cachedProps,
       errors:  [],
       loading: {
         fp: !this.cache.has(entry, 'fpImage'),
@@ -306,7 +313,7 @@ class ViEditorSession {
       );
       // 持久化前先校验 JSON。
       const env = parsePropsJson(result.stdout);
-      await this.cache.writeProps(entry, env);
+      await this.cache.writeProps(entry, toCachedPropsJson(env));
     } catch (err) {
       const detail = err instanceof PythonScriptError ? err.message : String(err);
       await this.postError(`读取属性失败: ${detail}`);
@@ -374,7 +381,7 @@ class ViEditorSession {
     // 升级导致旧条目不再兼容时安全地返回 null。代价仅为一次 JSON 往返，
     // 而 props.json 体积很小，可以忽略不计。
     try {
-      return parsePropsJson(JSON.stringify(raw));
+      return parseCachedPropsJson(JSON.stringify(raw));
     } catch {
       return null;
     }

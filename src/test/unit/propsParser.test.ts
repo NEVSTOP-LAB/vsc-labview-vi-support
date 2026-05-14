@@ -1,7 +1,10 @@
 import * as assert from 'assert';
 import {
+  parseCachedPropsJson,
   parsePropsResponseText,
   parsePropsJson,
+  PROPS_CACHE_VERSION,
+  toCachedPropsJson,
 } from '../../scripts/propsParser';
 
 function b64(text: string): string {
@@ -140,5 +143,39 @@ suite('propsParser.parsePropsJson', () => {
 
   test('rejects missing props field', () => {
     assert.throws(() => parsePropsJson('{"vi_path":"x"}'));
+  });
+});
+
+suite('propsParser cached props JSON', () => {
+  test('roundtrips cache envelopes with an explicit cache version', () => {
+    const cached = toCachedPropsJson({
+      viPath: 'C:\\path\\main.vi',
+      lvVersion: '17.0',
+      saved: true,
+      saveError: '',
+      props: {
+        Description: {
+          ok: true,
+          type: 'String',
+          value: '中文说明',
+          error: null,
+          writable: true,
+          description: 'VI 描述（属性对话框中的说明文字）',
+        },
+      },
+    });
+
+    assert.strictEqual(cached['_cacheVersion'], PROPS_CACHE_VERSION);
+    const parsed = parseCachedPropsJson(JSON.stringify(cached));
+    assert.strictEqual(parsed.props['Description'].description, 'VI 描述（属性对话框中的说明文字）');
+    assert.strictEqual(parsed.saved, true);
+  });
+
+  test('rejects stale cache entries without the cache version marker', () => {
+    assert.throws(() => parseCachedPropsJson(JSON.stringify({
+      vi_path: 'C:\\path\\main.vi',
+      lv_version: '17.0',
+      props: {},
+    })));
   });
 });

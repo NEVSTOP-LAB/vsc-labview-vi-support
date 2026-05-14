@@ -1,5 +1,7 @@
 .vscode/**
 .vscode-test/**
+.github/**
+.venv/**
 src/**
 scripts/**
 images/icon.svg
@@ -8,6 +10,10 @@ esbuild.js
 eslint.config.mjs
 tsconfig.json
 .vscode-test.mjs
+prototype/README.html
+prototype/vi/**
+**/__pycache__/**
+**/*.pyc
 out/**
 node_modules/**
 **/*.map

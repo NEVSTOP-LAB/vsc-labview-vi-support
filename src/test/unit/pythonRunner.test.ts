@@ -26,10 +26,10 @@ class FakeChild extends EventEmitter {
 
 function makeSpawn(
   configure: (child: FakeChild) => void,
-): { spawnFn: SpawnFn; calls: { command: string; args: readonly string[] }[] } {
-  const calls: { command: string; args: readonly string[] }[] = [];
-  const spawnFn: SpawnFn = ((command: string, args: readonly string[]) => {
-    calls.push({ command, args });
+): { spawnFn: SpawnFn; calls: { command: string; args: readonly string[]; options?: unknown }[] } {
+  const calls: { command: string; args: readonly string[]; options?: unknown }[] = [];
+  const spawnFn: SpawnFn = ((command: string, args: readonly string[], options) => {
+    calls.push({ command, args, options });
     const child = new FakeChild();
     setImmediate(() => configure(child));
     // The runner only uses `.stdout`, `.stderr`, `.on(...)`, `.kill(...)`,
@@ -56,6 +56,23 @@ suite('pythonRunner.runPythonScript', () => {
 
     assert.strictEqual(calls.length, 1);
     assert.deepStrictEqual(calls[0].args, ['/x/script.py', '--flag']);
+  });
+
+  test('forces UTF-8 for Python stdio so Chinese JSON is decoded correctly', async () => {
+    const { spawnFn, calls } = makeSpawn((child) => {
+      child.emit('close', 0, null);
+    });
+
+    await runPythonScript('/x/script.py', [], {
+      spawnFn,
+      env: { MY_FLAG: '1' },
+    });
+
+    assert.strictEqual(calls.length, 1);
+    const options = calls[0].options as { env?: NodeJS.ProcessEnv } | undefined;
+    assert.strictEqual(options?.env?.MY_FLAG, '1');
+    assert.strictEqual(options?.env?.PYTHONUTF8, '1');
+    assert.strictEqual(options?.env?.PYTHONIOENCODING, 'utf-8');
   });
 
   test('uses default Python executable based on platform', () => {
