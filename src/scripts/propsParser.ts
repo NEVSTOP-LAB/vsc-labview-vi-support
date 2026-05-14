@@ -227,3 +227,21 @@ export function parseCachedPropsJson(jsonText: string): PropsJsonEnvelope {
   }
   return parsePropsJson(jsonText);
 }
+
+export function mergeStaticPropsIntoEnvelope(
+  envelope: PropsJsonEnvelope,
+  staticEnvelope: PropsJsonEnvelope,
+): PropsJsonEnvelope {
+  const props = { ...envelope.props };
+  for (const [name, entry] of Object.entries(staticEnvelope.props)) {
+    if (entry.source === 'static') {
+      props[name] = entry;
+    }
+  }
+  return {
+    ...envelope,
+    viPath: staticEnvelope.viPath,
+    lvVersion: envelope.lvVersion ?? staticEnvelope.lvVersion,
+    props,
+  };
+}

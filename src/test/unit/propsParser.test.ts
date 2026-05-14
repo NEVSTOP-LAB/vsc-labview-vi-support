@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import {
+  mergeStaticPropsIntoEnvelope,
   parseCachedPropsJson,
   parsePropsResponseText,
   parsePropsJson,
@@ -199,5 +200,111 @@ suite('propsParser cached props JSON', () => {
       lv_version: '17.0',
       props: {},
     })));
+  });
+
+  test('merges refreshed static props without dropping cached dynamic props', () => {
+    const merged = mergeStaticPropsIntoEnvelope(
+      {
+        viPath: 'C:\\old\\main.vi',
+        lvVersion: '17.0',
+        dynamicPropsLoaded: true,
+        props: {
+          Name: {
+            ok: true,
+            type: 'String',
+            value: 'main.vi',
+            error: null,
+            loaded: true,
+            writable: false,
+            source: 'static',
+            sourceLabel: '静态',
+          },
+          Path: {
+            ok: true,
+            type: 'String',
+            value: 'C:\\old\\main.vi',
+            error: null,
+            loaded: true,
+            writable: false,
+            source: 'static',
+            sourceLabel: '静态',
+          },
+          SavedVersion: {
+            ok: true,
+            type: 'String',
+            value: '17.0',
+            error: null,
+            loaded: true,
+            writable: false,
+            source: 'static',
+            sourceLabel: '静态',
+          },
+          Description: {
+            ok: true,
+            type: 'String',
+            value: 'cached description',
+            error: null,
+            loaded: true,
+            writable: true,
+            source: 'dynamic',
+            sourceLabel: '动态',
+          },
+        },
+      },
+      {
+        viPath: 'C:\\new\\renamed.vi',
+        lvVersion: '17.0',
+        dynamicPropsLoaded: false,
+        props: {
+          Name: {
+            ok: true,
+            type: 'String',
+            value: 'renamed.vi',
+            error: null,
+            loaded: true,
+            writable: false,
+            source: 'static',
+            sourceLabel: '静态',
+          },
+          Path: {
+            ok: true,
+            type: 'String',
+            value: 'C:\\new\\renamed.vi',
+            error: null,
+            loaded: true,
+            writable: false,
+            source: 'static',
+            sourceLabel: '静态',
+          },
+          SavedVersion: {
+            ok: true,
+            type: 'String',
+            value: '17.0',
+            error: null,
+            loaded: true,
+            writable: false,
+            source: 'static',
+            sourceLabel: '静态',
+          },
+          Description: {
+            ok: true,
+            type: 'String',
+            value: null,
+            error: null,
+            loaded: false,
+            writable: true,
+            source: 'dynamic',
+            sourceLabel: '动态',
+          },
+        },
+      },
+    );
+
+    assert.strictEqual(merged.viPath, 'C:\\new\\renamed.vi');
+    assert.strictEqual(merged.dynamicPropsLoaded, true);
+    assert.strictEqual(merged.props['Name'].value, 'renamed.vi');
+    assert.strictEqual(merged.props['Path'].value, 'C:\\new\\renamed.vi');
+    assert.strictEqual(merged.props['Description'].value, 'cached description');
+    assert.strictEqual(merged.props['Description'].loaded, true);
   });
 });

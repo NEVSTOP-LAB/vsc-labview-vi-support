@@ -336,7 +336,36 @@ body.splitter-dragging * {
   border: 1px solid var(--vscode-panel-border, #444);
   font-size: 0.82em;
   line-height: 1.2;
-  cursor: help;
+  cursor: default;
+}
+
+#prop-source-tooltip {
+  position: fixed;
+  min-width: 180px;
+  max-width: 260px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, #444));
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, #2a2a2a));
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+  white-space: normal;
+  text-align: left;
+  line-height: 1.4;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  z-index: 20;
+}
+
+#prop-source-tooltip.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.prop-source-badge:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: 2px;
 }
 
 .prop-source-badge-static {

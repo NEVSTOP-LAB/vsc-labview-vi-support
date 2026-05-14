@@ -90,6 +90,12 @@
   const tableArea = $('#table-area');
   const imageArea = $('#image-area');
   const splitter  = $('#main-splitter');
+  const sourceTooltip = document.createElement('div');
+  sourceTooltip.id = 'prop-source-tooltip';
+  sourceTooltip.hidden = true;
+  sourceTooltip.setAttribute('role', 'tooltip');
+  document.body.appendChild(sourceTooltip);
+  let activeTooltipTarget = null;
 
   const panes = {
     fp: document.querySelector('.image-pane[data-pane="fp"]'),
@@ -161,6 +167,58 @@
   function clearErrors() {
     errorsEl.innerHTML = '';
     errorsEl.hidden = true;
+  }
+
+  function hideSourceTooltip(target) {
+    if (target && activeTooltipTarget !== target) {
+      return;
+    }
+    activeTooltipTarget = null;
+    sourceTooltip.hidden = true;
+    sourceTooltip.classList.remove('visible');
+    sourceTooltip.textContent = '';
+    sourceTooltip.removeAttribute('data-placement');
+    sourceTooltip.style.left = '';
+    sourceTooltip.style.top = '';
+  }
+
+  function positionSourceTooltip(target) {
+    if (!target || sourceTooltip.hidden) {
+      return;
+    }
+    const tooltipGap = 10;
+    const viewportMargin = 12;
+    const targetRect = target.getBoundingClientRect();
+    const tooltipRect = sourceTooltip.getBoundingClientRect();
+
+    let placement = 'top';
+    let top = targetRect.top - tooltipRect.height - tooltipGap;
+    if (top < viewportMargin) {
+      placement = 'bottom';
+      top = targetRect.bottom + tooltipGap;
+    }
+    if (top + tooltipRect.height > window.innerHeight - viewportMargin) {
+      top = Math.max(viewportMargin, window.innerHeight - tooltipRect.height - viewportMargin);
+    }
+
+    let left = targetRect.left + (targetRect.width - tooltipRect.width) / 2;
+    left = Math.max(viewportMargin, Math.min(left, window.innerWidth - tooltipRect.width - viewportMargin));
+
+    sourceTooltip.dataset.placement = placement;
+    sourceTooltip.style.left = Math.round(left) + 'px';
+    sourceTooltip.style.top = Math.round(top) + 'px';
+  }
+
+  function showSourceTooltip(target) {
+    const tooltip = target && target.dataset ? target.dataset.tooltip : '';
+    if (!tooltip) {
+      return;
+    }
+    activeTooltipTarget = target;
+    sourceTooltip.textContent = tooltip;
+    sourceTooltip.hidden = false;
+    sourceTooltip.classList.add('visible');
+    positionSourceTooltip(target);
   }
 
   function clampImageAreaHeight(totalHeight, desiredHeight) {
@@ -348,8 +406,15 @@
   attachPanZoom('fp');
   attachPanZoom('bd');
   window.addEventListener('resize', () => {
+    if (activeTooltipTarget) {
+      positionSourceTooltip(activeTooltipTarget);
+    }
     refreshLayout();
   });
+
+  tableArea.addEventListener('scroll', () => {
+    hideSourceTooltip();
+  }, { passive: true });
 
   splitter.addEventListener('pointerdown', (event) => {
     if (event.button !== 0 || !isPreviewVisible() || !isTableVisible()) {
@@ -509,16 +574,19 @@
   });
 
   btnReload.addEventListener('click', () => {
+    hideSourceTooltip();
     clearErrors();
     vscode.postMessage({ type: 'reload' });
   });
 
   btnLoadDynamic.addEventListener('click', () => {
+    hideSourceTooltip();
     clearErrors();
     vscode.postMessage({ type: 'loadDynamicProps' });
   });
 
   btnSave.addEventListener('click', () => {
+    hideSourceTooltip();
     const updates = collectUpdates();
     if (Object.keys(updates).length === 0) { return; }
     clearErrors();
@@ -575,8 +643,13 @@
       || DEFAULT_SOURCE_DESCRIPTIONS[entry.source]
       || '';
     if (tooltip) {
-      span.title = tooltip;
+      span.dataset.tooltip = tooltip;
       span.setAttribute('aria-label', tooltip);
+      span.tabIndex = 0;
+      span.addEventListener('mouseenter', () => showSourceTooltip(span));
+      span.addEventListener('mouseleave', () => hideSourceTooltip(span));
+      span.addEventListener('focus', () => showSourceTooltip(span));
+      span.addEventListener('blur', () => hideSourceTooltip(span));
     }
     return span;
   }
@@ -801,6 +874,7 @@
 
   function renderTable(props) {
     // Reset row tracking; rebuild from scratch each refresh.
+    hideSourceTooltip();
     Object.keys(propRows).forEach((k) => delete propRows[k]);
     tbody.innerHTML = '';
 

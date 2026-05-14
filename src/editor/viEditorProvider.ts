@@ -13,6 +13,7 @@ import {
   writeViProps,
 } from '../scripts/labviewRuntime';
 import {
+  mergeStaticPropsIntoEnvelope,
   parseCachedPropsJson,
   toCachedPropsJson,
   type PropsJsonEnvelope,
@@ -327,14 +328,21 @@ class ViEditorSession {
     }
     this.currentEntry = entry;
     const { pathChanged } = await this.cache.ensureEntry(entry, viPath);
-    if (pathChanged) {
-      // 相同内容但不同路径：props.json 含路径相关字段，必须重新获取。
-      try { await fs.promises.unlink(entry.artifacts.propsJson); } catch { /* 文件不存在则忽略 */ }
-    }
 
     let cachedProps = await this.readCachedProps(entry);
     if (cachedProps === null && this.cache.has(entry, 'propsJson')) {
       try { await fs.promises.unlink(entry.artifacts.propsJson); } catch { /* 文件不存在则忽略 */ }
+    }
+
+    if (pathChanged && cachedProps !== null) {
+      // 相同内容但不同路径：只刷新静态字段，保留同 hash 的动态属性缓存。
+      try {
+        cachedProps = await this.ensureStaticProps(entry, cachedProps);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        await this.postError(`刷新静态属性失败: ${detail}`);
+        return;
+      }
     }
 
     const refreshDynamicProps = forceRefresh && this.isDynamicPropsLoaded(cachedProps);
@@ -564,8 +572,14 @@ class ViEditorSession {
     return envelope?.dynamicPropsLoaded === true;
   }
 
-  private async ensureStaticProps(entry: CacheEntry): Promise<PropsJsonEnvelope> {
-    const env = await readStaticViProps(this.document.uri.fsPath);
+  private async ensureStaticProps(
+    entry: CacheEntry,
+    existing: PropsJsonEnvelope | null = null,
+  ): Promise<PropsJsonEnvelope> {
+    const staticEnv = await readStaticViProps(this.document.uri.fsPath);
+    const env = existing
+      ? mergeStaticPropsIntoEnvelope(existing, staticEnv)
+      : staticEnv;
     await this.cache.writeProps(entry, toCachedPropsJson(env));
     return env;
   }
