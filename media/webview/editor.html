@@ -14,7 +14,7 @@
           <span class="tb-field-label">视图模式</span>
           <select id="view-mode" class="tb-select" title="选择当前编辑器中需要显示的内容区域">
             <option value="both">预览与属性表</option>
-            <option value="table-only">仅显示属性表</option>
+            <option value="table-only" selected>仅显示属性表</option>
             <option value="preview-only">仅显示预览</option>
           </select>
         </label>
@@ -27,6 +27,7 @@
 
         <div class="tb-group tb-group-actions">
           <div id="table-controls" class="tb-group">
+            <button id="btn-load-dynamic" class="tb-btn" title="按需读取动态属性；这会启动或连接 LabVIEW">读取动态属性</button>
             <button id="btn-save"   class="tb-btn primary" title="把改动写回 .vi 文件" disabled>保存</button>
           </div>
           <button id="btn-reload" class="tb-btn" title="重新导出图像并重新读取属性">刷新</button>

@@ -106,6 +106,20 @@ html, body {
   border-bottom: 1px solid var(--vscode-panel-border, #444);
 }
 
+.status {
+  white-space: pre-wrap;
+}
+
+.status.status-info {
+  background: color-mix(in srgb, var(--vscode-textBlockQuote-background, transparent) 70%, transparent);
+  color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+}
+
+.status.status-loading {
+  background: color-mix(in srgb, var(--vscode-progressBar-background, #0e70c0) 16%, transparent);
+  color: var(--vscode-foreground);
+}
+
 .errors {
   background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
   color: var(--vscode-inputValidation-errorForeground, #fff);
@@ -305,6 +319,36 @@ body.splitter-dragging * {
   font-weight: 500;
 }
 
+.prop-name-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.prop-source-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--vscode-panel-border, #444);
+  font-size: 0.82em;
+  line-height: 1.2;
+  cursor: help;
+}
+
+.prop-source-badge-static {
+  background: color-mix(in srgb, var(--vscode-charts-blue, #3794ff) 18%, transparent);
+  color: var(--vscode-charts-blue, #3794ff);
+}
+
+.prop-source-badge-dynamic {
+  background: color-mix(in srgb, var(--vscode-charts-orange, #d18616) 18%, transparent);
+  color: var(--vscode-charts-orange, #d18616);
+}
+
 .prop-name-alias {
   margin-top: 2px;
   opacity: 0.6;
@@ -359,6 +403,12 @@ body.splitter-dragging * {
   font-style: italic;
 }
 
+.value-hint {
+  margin-top: 2px;
+  opacity: 0.65;
+  font-size: 0.85em;
+}
+
 .access-badge {
   display: inline-flex;
   align-items: center;
@@ -383,6 +433,12 @@ body.splitter-dragging * {
 
 .access-badge-readonly {
   color: var(--vscode-descriptionForeground, #9d9d9d);
+}
+
+.access-badge-deferred {
+  color: var(--vscode-charts-orange, #d18616);
+  font-weight: 700;
+  font-size: 14px;
 }
 
 .access-badge-button {

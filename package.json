@@ -73,7 +73,7 @@
         },
         "labview-vi-support.viewMode": {
           "type": "string",
-          "default": "both",
+          "default": "table-only",
           "enum": [
             "both",
             "table-only",

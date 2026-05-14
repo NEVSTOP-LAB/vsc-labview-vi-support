@@ -56,6 +56,25 @@ suite('propMetadata.decorateProps', () => {
     assert.strictEqual(props['ExecPriority'].groupLabel, '执行设置');
     assert.strictEqual(props['ExecPriority'].description, '执行优先级（VI Server 枚举值）');
   });
+
+  test('can include unloaded dynamic placeholders with source metadata', () => {
+    const props = decorateProps({
+      Name: {
+        ok: true,
+        type: 'String',
+        value: 'main.vi',
+        error: null,
+      },
+    }, { includeUnloadedDynamic: true, savedVersion: '17.0' });
+
+    assert.strictEqual(props['Name'].source, 'static');
+    assert.strictEqual(props['Name'].sourceLabel, '静态');
+    assert.strictEqual(props['SavedVersion'].source, 'static');
+    assert.strictEqual(props['Description'].loaded, false);
+    assert.strictEqual(props['Description'].source, 'dynamic');
+    assert.strictEqual(props['Description'].sourceLabel, '动态');
+    assert.strictEqual(props['Description'].sourceDescription, '动态属性：需要通过 LabVIEW VI Server 读取，按需加载时可能触发 LabVIEW 窗口。');
+  });
 });
 
 suite('labviewRuntime.buildWriteRequestLines', () => {

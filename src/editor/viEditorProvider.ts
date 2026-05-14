@@ -6,8 +6,9 @@ import * as vscode from 'vscode';
 import { getCacheRoot } from '../cache/cacheDirectory';
 import { ViCache, type CacheEntry } from '../cache/viCache';
 import {
-  exportViPanelImage,
+  exportViPanelImages,
   type LabVIEWRuntimeOptions,
+  readStaticViProps,
   readViProps,
   writeViProps,
 } from '../scripts/labviewRuntime';
@@ -212,6 +213,8 @@ class ViEditorSession {
   private _loadChain: Promise<void> = Promise.resolve();
   /** 链尾是否已有待执行的非强制刷新任务（用于跳过重复的 ready 触发）。 */
   private _loadPending = false;
+  /** 动态属性读取是否已入队（避免用户重复点击触发多次 LabVIEW 调用）。 */
+  private _dynamicPropsPending = false;
 
   public constructor(
     private readonly document: ViDocument,
@@ -242,6 +245,9 @@ class ViEditorSession {
         break;
       case 'reload':
         this._enqueueLoad(true);
+        break;
+      case 'loadDynamicProps':
+        this._enqueueDynamicPropsLoad();
         break;
       case 'setViewMode': {
         const viewMode = message['viewMode'];
@@ -293,6 +299,23 @@ class ViEditorSession {
       });
   }
 
+  private _enqueueDynamicPropsLoad(forceRefresh = false): void {
+    if (this._dynamicPropsPending && !forceRefresh) {
+      return;
+    }
+    this._dynamicPropsPending = true;
+    this._loadChain = this._loadChain
+      .then(async () => {
+        this._dynamicPropsPending = false;
+        if (!this.disposed) {
+          await this.loadDynamicProps(forceRefresh);
+        }
+      })
+      .catch(() => {
+        this._dynamicPropsPending = false;
+      });
+  }
+
   private async loadAndPush(forceRefresh = false): Promise<void> {
     const viPath = this.document.uri.fsPath;
     let entry: CacheEntry;
@@ -309,18 +332,34 @@ class ViEditorSession {
       try { await fs.promises.unlink(entry.artifacts.propsJson); } catch { /* 文件不存在则忽略 */ }
     }
 
-    const cachedProps = await this.readCachedProps(entry);
+    let cachedProps = await this.readCachedProps(entry);
     if (cachedProps === null && this.cache.has(entry, 'propsJson')) {
       try { await fs.promises.unlink(entry.artifacts.propsJson); } catch { /* 文件不存在则忽略 */ }
     }
 
+    const refreshDynamicProps = forceRefresh && this.isDynamicPropsLoaded(cachedProps);
+
     if (forceRefresh) {
-      // Wipe the on-disk artifacts but keep the directory; cheaper than
-      // invalidate() since we want the same hash dir.
-      for (const k of ['fpImage', 'bdImage', 'propsJson'] as const) {
+      for (const k of ['fpImage', 'bdImage'] as const) {
         try { await fs.promises.unlink(entry.artifacts[k]); } catch { /* ignore */ }
       }
+      if (cachedProps === null || refreshDynamicProps) {
+        try { await fs.promises.unlink(entry.artifacts.propsJson); } catch { /* ignore */ }
+        cachedProps = null;
+      }
     }
+
+    if (cachedProps === null) {
+      try {
+        cachedProps = await this.ensureStaticProps(entry);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        await this.postError(`读取静态属性失败: ${detail}`);
+        return;
+      }
+    }
+
+    const initialLoading = this.buildLoadingState(entry, refreshDynamicProps);
 
     // Initial state: whatever is on disk right now.
     await this.pushState({
@@ -328,53 +367,108 @@ class ViEditorSession {
       bdImage: this.cache.has(entry, 'bdImage') ? entry.artifacts.bdImage : null,
       props:   cachedProps,
       errors:  [],
-      loading: {
-        fp: !this.cache.has(entry, 'fpImage'),
-        bd: !this.cache.has(entry, 'bdImage'),
-        props: !this.cache.has(entry, 'propsJson'),
-      },
+      loading: initialLoading,
     });
 
-    // Kick off any missing artifacts in parallel.
-    const tasks: Promise<void>[] = [];
-    if (!this.cache.has(entry, 'fpImage')) {
-      tasks.push(this.exportPanel(entry, 'fp'));
+    await this.exportPanels(entry, { fp: initialLoading.fp, bd: initialLoading.bd });
+    if (refreshDynamicProps) {
+      const refreshed = await this.fetchProps(entry);
+      if (refreshed) {
+        cachedProps = refreshed;
+      }
     }
-    if (!this.cache.has(entry, 'bdImage')) {
-      tasks.push(this.exportPanel(entry, 'bd'));
-    }
-    if (!this.cache.has(entry, 'propsJson')) {
-      tasks.push(this.fetchProps(entry));
-    }
-    await Promise.allSettled(tasks);
 
     // Final push with whatever succeeded.
     await this.pushState({
       fpImage: this.cache.has(entry, 'fpImage') ? entry.artifacts.fpImage : null,
       bdImage: this.cache.has(entry, 'bdImage') ? entry.artifacts.bdImage : null,
-      props:   await this.readCachedProps(entry),
+      props:   (await this.readCachedProps(entry)) ?? cachedProps,
       errors:  [],
       loading: { fp: false, bd: false, props: false },
     });
   }
 
-  private async exportPanel(entry: CacheEntry, panel: 'fp' | 'bd'): Promise<void> {
-    const outPath = panel === 'fp' ? entry.artifacts.fpImage : entry.artifacts.bdImage;
+  private async loadDynamicProps(forceRefresh = false): Promise<void> {
+    const entry = this.currentEntry;
+    if (!entry) {
+      this._enqueueLoad(forceRefresh);
+      return;
+    }
+
+    let cachedProps = await this.readCachedProps(entry);
+    if (cachedProps === null) {
+      try {
+        cachedProps = await this.ensureStaticProps(entry);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        await this.postError(`读取静态属性失败: ${detail}`);
+        return;
+      }
+    }
+    if (this.isDynamicPropsLoaded(cachedProps) && !forceRefresh) {
+      await this.pushState({
+        fpImage: this.cache.has(entry, 'fpImage') ? entry.artifacts.fpImage : null,
+        bdImage: this.cache.has(entry, 'bdImage') ? entry.artifacts.bdImage : null,
+        props: cachedProps,
+        errors: [],
+        loading: { fp: false, bd: false, props: false },
+      });
+      return;
+    }
+
+    await this.pushState({
+      fpImage: this.cache.has(entry, 'fpImage') ? entry.artifacts.fpImage : null,
+      bdImage: this.cache.has(entry, 'bdImage') ? entry.artifacts.bdImage : null,
+      props: cachedProps,
+      errors: [],
+      loading: { fp: false, bd: false, props: true },
+    });
+
+    const refreshed = await this.fetchProps(entry);
+    await this.pushState({
+      fpImage: this.cache.has(entry, 'fpImage') ? entry.artifacts.fpImage : null,
+      bdImage: this.cache.has(entry, 'bdImage') ? entry.artifacts.bdImage : null,
+      props: refreshed ?? (await this.readCachedProps(entry)) ?? cachedProps,
+      errors: [],
+      loading: { fp: false, bd: false, props: false },
+    });
+  }
+
+  private async exportPanels(
+    entry: CacheEntry,
+    requestedPanels: { fp: boolean; bd: boolean },
+  ): Promise<void> {
+    if (!this.isPreviewVisible() || (!requestedPanels.fp && !requestedPanels.bd)) {
+      return;
+    }
+    const outputPaths: Partial<Record<'fp' | 'bd', string>> = {};
+    if (requestedPanels.fp) {
+      outputPaths.fp = entry.artifacts.fpImage;
+    }
+    if (requestedPanels.bd) {
+      outputPaths.bd = entry.artifacts.bdImage;
+    }
     try {
-      await exportViPanelImage(this.document.uri.fsPath, panel, outPath, this.scripts, this.runtimeOptions);
+      await exportViPanelImages(this.document.uri.fsPath, outputPaths, this.scripts, this.runtimeOptions);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      await this.postError(`${panel === 'fp' ? '前面板' : '程序框图'}导出失败: ${detail}`);
+      if (requestedPanels.fp && requestedPanels.bd) {
+        await this.postError(`预览导出失败: ${detail}`);
+      } else {
+        await this.postError(`${requestedPanels.fp ? '前面板' : '程序框图'}导出失败: ${detail}`);
+      }
     }
   }
 
-  private async fetchProps(entry: CacheEntry): Promise<void> {
+  private async fetchProps(entry: CacheEntry): Promise<PropsJsonEnvelope | null> {
     try {
       const env = await readViProps(this.document.uri.fsPath, this.scripts, this.runtimeOptions);
       await this.cache.writeProps(entry, toCachedPropsJson(env));
+      return env;
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       await this.postError(`读取属性失败: ${detail}`);
+      return null;
     }
   }
 
@@ -403,8 +497,37 @@ class ViEditorSession {
       await this.postError(saveError);
     }
 
-    // Recompute MD5 (file changed on disk) and reload.
-    await this.loadAndPush(true);
+    let entry: CacheEntry;
+    try {
+      entry = await this.cache.entryForFile(this.document.uri.fsPath);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      await this.postError(`保存后刷新缓存失败: ${detail}`);
+      return;
+    }
+
+    this.currentEntry = entry;
+    await this.cache.ensureEntry(entry, this.document.uri.fsPath);
+    await this.cache.writeProps(entry, toCachedPropsJson(env));
+
+    const initialLoading = this.buildLoadingState(entry, false);
+    await this.pushState({
+      fpImage: this.cache.has(entry, 'fpImage') ? entry.artifacts.fpImage : null,
+      bdImage: this.cache.has(entry, 'bdImage') ? entry.artifacts.bdImage : null,
+      props: env,
+      errors: [],
+      loading: initialLoading,
+    });
+
+    await this.exportPanels(entry, { fp: initialLoading.fp, bd: initialLoading.bd });
+
+    await this.pushState({
+      fpImage: this.cache.has(entry, 'fpImage') ? entry.artifacts.fpImage : null,
+      bdImage: this.cache.has(entry, 'bdImage') ? entry.artifacts.bdImage : null,
+      props: (await this.readCachedProps(entry)) ?? env,
+      errors: [],
+      loading: { fp: false, bd: false, props: false },
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -416,6 +539,35 @@ class ViEditorSession {
       return;
     }
     await this.panel.webview.postMessage({ type: 'viewMode', viewMode });
+    if (viewMode !== 'table-only') {
+      this._enqueueLoad();
+    }
+  }
+
+  private buildLoadingState(
+    entry: CacheEntry,
+    propsLoading: boolean,
+  ): { fp: boolean; bd: boolean; props: boolean } {
+    const previewVisible = this.isPreviewVisible();
+    return {
+      fp: previewVisible && !this.cache.has(entry, 'fpImage'),
+      bd: previewVisible && !this.cache.has(entry, 'bdImage'),
+      props: propsLoading,
+    };
+  }
+
+  private isPreviewVisible(): boolean {
+    return this.getViewMode() !== 'table-only';
+  }
+
+  private isDynamicPropsLoaded(envelope: PropsJsonEnvelope | null): boolean {
+    return envelope?.dynamicPropsLoaded === true;
+  }
+
+  private async ensureStaticProps(entry: CacheEntry): Promise<PropsJsonEnvelope> {
+    const env = await readStaticViProps(this.document.uri.fsPath);
+    await this.cache.writeProps(entry, toCachedPropsJson(env));
+    return env;
   }
 
   private async readCachedProps(entry: CacheEntry): Promise<PropsJsonEnvelope | null> {

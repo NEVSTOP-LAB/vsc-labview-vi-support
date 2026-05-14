@@ -5,6 +5,7 @@ import { spawn, type SpawnOptions } from 'child_process';
 
 import {
   parsePropsResponseText,
+  type PropEntry,
   type PropsJsonEnvelope,
   type PropsResponse,
 } from './propsParser';
@@ -55,6 +56,8 @@ interface ImageWorkerResponse {
   connectedDirectory: string;
   attempts: number;
   outputPath: string;
+  fpOutputPath: string;
+  bdOutputPath: string;
 }
 
 export function parseViSavedVersionHeader(header: Buffer): LabVIEWVersion | null {
@@ -109,9 +112,33 @@ export async function exportViPanelImage(
   scripts: ScriptPaths,
   options: LabVIEWRuntimeOptions = {},
 ): Promise<string> {
+  const outputs = await exportViPanelImages(
+    viPath,
+    { [panel]: outputPath },
+    scripts,
+    options,
+  );
+  return outputs[panel] ?? path.resolve(outputPath);
+}
+
+export async function exportViPanelImages(
+  viPath: string,
+  outputPaths: Partial<Record<'fp' | 'bd', string>>,
+  scripts: ScriptPaths,
+  options: LabVIEWRuntimeOptions = {},
+): Promise<Partial<Record<'fp' | 'bd', string>>> {
   ensureWindows();
   const absViPath = path.resolve(viPath);
-  const absOutputPath = path.resolve(outputPath);
+  const normalizedOutputs: Partial<Record<'fp' | 'bd', string>> = {};
+  if (outputPaths.fp) {
+    normalizedOutputs.fp = path.resolve(outputPaths.fp);
+  }
+  if (outputPaths.bd) {
+    normalizedOutputs.bd = path.resolve(outputPaths.bd);
+  }
+  if (!normalizedOutputs.fp && !normalizedOutputs.bd) {
+    throw new Error('At least one image output path must be provided.');
+  }
   const installation = await resolveTargetInstallation(absViPath);
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -121,17 +148,25 @@ export async function exportViPanelImage(
         scriptPath: scripts.savePanelImageWorker,
         args: [
           `/viPath:${absViPath}`,
-          `/panel:${panel}`,
-          `/outputPath:${absOutputPath}`,
+          ...(normalizedOutputs.fp ? [`/fpOutputPath:${normalizedOutputs.fp}`] : []),
+          ...(normalizedOutputs.bd ? [`/bdOutputPath:${normalizedOutputs.bd}`] : []),
           ...buildTargetArgs(installation),
         ],
         timeoutMs: options.timeoutMs,
       });
       const response = parseImageWorkerResponseText(responseText);
       if (response.ok) {
-        return response.outputPath || absOutputPath;
+        return {
+          ...(normalizedOutputs.fp
+            ? { fp: response.fpOutputPath || response.outputPath || normalizedOutputs.fp }
+            : {}),
+          ...(normalizedOutputs.bd
+            ? { bd: response.bdOutputPath || response.outputPath || normalizedOutputs.bd }
+            : {}),
+        };
       }
-      lastError = new Error(response.reason || `Image export worker failed for panel=${panel}.`);
+      const targets = Object.keys(normalizedOutputs).join(',') || 'unknown';
+      lastError = new Error(response.reason || `Image export worker failed for panels=${targets}.`);
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
     }
@@ -141,7 +176,8 @@ export async function exportViPanelImage(
     }
   }
 
-  throw lastError ?? new Error(`Image export worker failed for panel=${panel}.`);
+  const targets = Object.keys(normalizedOutputs).join(',') || 'unknown';
+  throw lastError ?? new Error(`Image export worker failed for panels=${targets}.`);
 }
 
 export async function readViProps(
@@ -166,6 +202,36 @@ export async function readViProps(
     throw new Error(response.reason || 'Read props worker failed.');
   }
   return toPropsEnvelope(absViPath, response);
+}
+
+export async function readStaticViProps(viPath: string): Promise<PropsJsonEnvelope> {
+  const absViPath = path.resolve(viPath);
+  const savedVersion = formatLabVIEWVersion(await readViSavedVersion(absViPath));
+  const staticProps: Record<string, PropEntry> = {
+    Name: {
+      ok: true,
+      type: 'String',
+      value: path.basename(absViPath),
+      error: null,
+      loaded: true,
+    },
+    Path: {
+      ok: true,
+      type: 'String',
+      value: absViPath,
+      error: null,
+      loaded: true,
+    },
+  };
+  return {
+    viPath: absViPath,
+    lvVersion: savedVersion,
+    dynamicPropsLoaded: false,
+    props: decorateProps(staticProps, {
+      includeUnloadedDynamic: true,
+      savedVersion,
+    }),
+  };
 }
 
 export async function writeViProps(
@@ -502,6 +568,8 @@ function parseImageWorkerResponseText(text: string): ImageWorkerResponse {
     connectedDirectory: decodeBase64Utf8(raw.connected_directory_b64 ?? ''),
     attempts: parseInt(raw.attempts ?? '0', 10) || 0,
     outputPath: decodeBase64Utf8(raw.output_path_b64 ?? ''),
+    fpOutputPath: decodeBase64Utf8(raw.fp_output_path_b64 ?? ''),
+    bdOutputPath: decodeBase64Utf8(raw.bd_output_path_b64 ?? ''),
   };
 }
 
@@ -528,6 +596,7 @@ async function toPropsEnvelope(
   const envelope: PropsJsonEnvelope = {
     viPath,
     lvVersion: response.connectedVersion || null,
+    dynamicPropsLoaded: true,
     props: decorateProps(response.props, {
       includeUnavailable: options.includeUnavailable,
       savedVersion,

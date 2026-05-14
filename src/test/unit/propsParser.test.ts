@@ -107,21 +107,27 @@ suite('propsParser.parsePropsJson', () => {
     const env = parsePropsJson(JSON.stringify({
       vi_path: 'C:\\path\\main.vi',
       lv_version: '17.0',
+      dynamic_props_loaded: true,
       props: {
         Description: {
           ok: true, type: 'String', value: 'd', error: null,
-          writable: true, description: 'desc', displayName: '说明', group: 'identity', groupLabel: '基础信息',
+          loaded: true, writable: true, description: 'desc', displayName: '说明', group: 'identity', groupLabel: '基础信息',
+          source: 'dynamic', sourceLabel: '动态', sourceDescription: '动态属性',
         },
         ExecPriority: {
           ok: true, type: 'Number', value: '1', error: null,
-          writable: true, description: 'p', displayName: '执行优先级', group: 'execution', groupLabel: '执行设置',
+          loaded: true, writable: true, description: 'p', displayName: '执行优先级', group: 'execution', groupLabel: '执行设置',
+          source: 'dynamic', sourceLabel: '动态', sourceDescription: '动态属性',
         },
       },
     }));
     assert.strictEqual(env.viPath, 'C:\\path\\main.vi');
     assert.strictEqual(env.lvVersion, '17.0');
+    assert.strictEqual(env.dynamicPropsLoaded, true);
     assert.strictEqual(env.props['Description'].writable, true);
+    assert.strictEqual(env.props['Description'].loaded, true);
     assert.strictEqual(env.props['Description'].displayName, '说明');
+    assert.strictEqual(env.props['Description'].source, 'dynamic');
     assert.strictEqual(env.props['ExecPriority'].groupLabel, '执行设置');
     assert.strictEqual(env.props['ExecPriority'].value, '1');
   });
@@ -153,6 +159,7 @@ suite('propsParser cached props JSON', () => {
     const cached = toCachedPropsJson({
       viPath: 'C:\\path\\main.vi',
       lvVersion: '17.0',
+      dynamicPropsLoaded: false,
       saved: true,
       saveError: '',
       props: {
@@ -161,20 +168,28 @@ suite('propsParser cached props JSON', () => {
           type: 'String',
           value: '中文说明',
           error: null,
+          loaded: false,
           writable: true,
           description: 'VI 描述（属性对话框中的说明文字）',
           displayName: '说明',
           group: 'identity',
           groupLabel: '基础信息',
+          source: 'dynamic',
+          sourceLabel: '动态',
+          sourceDescription: '动态属性：需要通过 LabVIEW VI Server 读取，按需加载时可能触发 LabVIEW 窗口。',
         },
       },
     });
 
     assert.strictEqual(cached['_cacheVersion'], PROPS_CACHE_VERSION);
+    assert.strictEqual(cached['dynamic_props_loaded'], false);
     const parsed = parseCachedPropsJson(JSON.stringify(cached));
     assert.strictEqual(parsed.props['Description'].description, 'VI 描述（属性对话框中的说明文字）');
     assert.strictEqual(parsed.props['Description'].displayName, '说明');
     assert.strictEqual(parsed.props['Description'].groupLabel, '基础信息');
+    assert.strictEqual(parsed.props['Description'].loaded, false);
+    assert.strictEqual(parsed.props['Description'].source, 'dynamic');
+    assert.strictEqual(parsed.dynamicPropsLoaded, false);
     assert.strictEqual(parsed.saved, true);
   });
 

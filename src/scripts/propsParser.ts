@@ -26,18 +26,23 @@
  */
 
 export type PropType = 'String' | 'Boolean' | 'Number';
+export type PropSource = 'static' | 'dynamic';
 
 export interface PropEntry {
   ok: boolean;
   type: PropType | string;
   value: string | null;
   error: string | null;
+  loaded?: boolean;
   /** Filled in by the runtime metadata layer. */
   writable?: boolean;
   description?: string;
   displayName?: string;
   group?: string;
   groupLabel?: string;
+  source?: PropSource;
+  sourceLabel?: string;
+  sourceDescription?: string;
 }
 
 export interface PropsResponse {
@@ -135,18 +140,20 @@ export function parsePropsResponseText(text: string): PropsResponse {
 export interface PropsJsonEnvelope {
   viPath: string;
   lvVersion: string | null;
+  dynamicPropsLoaded?: boolean;
   saved?: boolean;
   saveError?: string;
   props: Record<string, PropEntry>;
 }
 
-export const PROPS_CACHE_VERSION = 2;
+export const PROPS_CACHE_VERSION = 3;
 
 export function toCachedPropsJson(envelope: PropsJsonEnvelope): Record<string, unknown> {
   const cached: Record<string, unknown> = {
     _cacheVersion: PROPS_CACHE_VERSION,
     vi_path: envelope.viPath,
     lv_version: envelope.lvVersion,
+    dynamic_props_loaded: envelope.dynamicPropsLoaded === true,
     props: envelope.props,
   };
   if (typeof envelope.saved === 'boolean') {
@@ -180,17 +187,24 @@ export function parsePropsJson(jsonText: string): PropsJsonEnvelope {
       type:        (entry['type'] as PropType) ?? 'String',
       value:       (entry['value'] as string | null) ?? null,
       error:       (entry['error'] as string | null) ?? null,
+      loaded:      typeof entry['loaded']      === 'boolean' ? entry['loaded']      as boolean : undefined,
       writable:    typeof entry['writable']    === 'boolean' ? entry['writable']    as boolean : undefined,
       description: typeof entry['description'] === 'string'  ? entry['description'] as string  : undefined,
       displayName: typeof entry['displayName'] === 'string'  ? entry['displayName'] as string  : undefined,
       group:       typeof entry['group']       === 'string'  ? entry['group']       as string  : undefined,
       groupLabel:  typeof entry['groupLabel']  === 'string'  ? entry['groupLabel']  as string  : undefined,
+      source:      typeof entry['source']      === 'string'  ? entry['source']      as PropSource : undefined,
+      sourceLabel: typeof entry['sourceLabel'] === 'string'  ? entry['sourceLabel'] as string  : undefined,
+      sourceDescription: typeof entry['sourceDescription'] === 'string'
+        ? entry['sourceDescription'] as string
+        : undefined,
     };
   }
 
   const envelope: PropsJsonEnvelope = {
     viPath:    typeof obj['vi_path']    === 'string' ? (obj['vi_path']    as string) : '',
     lvVersion: typeof obj['lv_version'] === 'string' ? (obj['lv_version'] as string) : null,
+    dynamicPropsLoaded: obj['dynamic_props_loaded'] === true,
     props,
   };
   if (typeof obj['saved'] === 'boolean') {

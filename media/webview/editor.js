@@ -9,6 +9,7 @@
 // 出站消息（webview → host）：
 //   { type: 'ready' }
 //   { type: 'reload' }
+//   { type: 'loadDynamicProps' }
 //   { type: 'setViewMode', viewMode }
 //   { type: 'saveProps', updates: { 属性名: 值, ... } }
 
@@ -22,8 +23,10 @@
   // -------------------------------------------------------------------------
   /** @type {Record<string, {original: string|null, current: string, type: string, writable: boolean, editing?: boolean}>} */
   const propRows = {};
-  let viewMode = 'both';         // 'both' | 'table-only' | 'preview-only'
+  let viewMode = 'table-only';   // 'both' | 'table-only' | 'preview-only'
   let previewMode = 'both';      // 'fp' | 'bd' | 'both'
+  let currentPropsEnvelope = null;
+  let currentLoadingState = { fp: false, bd: false, props: false };
   /** @type {Record<'fp'|'bd', { scale: number, x: number, y: number, naturalW: number, naturalH: number }>} */
   const viewState = {
     fp: { scale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0 },
@@ -62,6 +65,10 @@
     panel: '前面板行为',
     other: '其他属性',
   };
+  const DEFAULT_SOURCE_DESCRIPTIONS = {
+    static: '静态属性：可直接离线读取，不需要启动 LabVIEW。',
+    dynamic: '动态属性：需要通过 LabVIEW VI Server 读取，按需加载时可能触发 LabVIEW 窗口。',
+  };
 
   // -------------------------------------------------------------------------
   // DOM
@@ -71,8 +78,10 @@
   const btnFp     = $('#btn-fp');
   const btnBd     = $('#btn-bd');
   const btnBoth   = $('#btn-both');
+  const btnLoadDynamic = $('#btn-load-dynamic');
   const btnSave   = $('#btn-save');
   const btnReload = $('#btn-reload');
+  const statusEl  = $('#status');
   const previewControls = $('#preview-controls');
   const tableControls = $('#table-controls');
   const errorsEl  = $('#errors');
@@ -121,6 +130,8 @@
   });
 
   function applyState(state) {
+    currentPropsEnvelope = state.props || null;
+    currentLoadingState = state.loading || { fp: false, bd: false, props: false };
     if (isKnownViewMode(state.viewMode)) {
       setViewMode(state.viewMode, { persist: false });
     }
@@ -136,6 +147,7 @@
     if (Array.isArray(state.errors) && state.errors.length > 0) {
       state.errors.forEach(appendError);
     }
+    updateDynamicUi();
     updateSaveButton();
   }
 
@@ -400,6 +412,50 @@
     const tableVisible = isTableVisible();
     previewControls.classList.toggle('hidden', !previewVisible);
     tableControls.classList.toggle('hidden', !tableVisible && !hasDirtyChanges());
+    updateDynamicUi();
+  }
+
+  function hasDynamicPropsEnvelope() {
+    const props = currentPropsEnvelope && currentPropsEnvelope.props;
+    return !!props && Object.values(props).some((entry) => entry && entry.source === 'dynamic');
+  }
+
+  function updateDynamicUi() {
+    const loading = !!(currentLoadingState && currentLoadingState.props);
+    const hasDynamicProps = hasDynamicPropsEnvelope();
+    const dynamicLoaded = !!(currentPropsEnvelope && currentPropsEnvelope.dynamicPropsLoaded === true);
+    const showLoadButton = isTableVisible() && hasDynamicProps && !dynamicLoaded;
+
+    btnLoadDynamic.classList.toggle('hidden', !showLoadButton);
+    btnLoadDynamic.disabled = !showLoadButton || loading;
+    btnLoadDynamic.textContent = loading ? '读取中…' : '读取动态属性';
+
+    if (!isTableVisible() || !hasDynamicProps) {
+      statusEl.hidden = true;
+      statusEl.textContent = '';
+      statusEl.classList.remove('status-info', 'status-loading');
+      return;
+    }
+
+    if (loading) {
+      statusEl.hidden = false;
+      statusEl.textContent = '正在读取动态属性…';
+      statusEl.classList.add('status-loading');
+      statusEl.classList.remove('status-info');
+      return;
+    }
+
+    if (!dynamicLoaded) {
+      statusEl.hidden = false;
+      statusEl.textContent = '当前仅显示静态属性。点击“读取动态属性”后将通过 LabVIEW 读取其余属性，可编辑项也会在读取后启用。';
+      statusEl.classList.add('status-info');
+      statusEl.classList.remove('status-loading');
+      return;
+    }
+
+    statusEl.hidden = true;
+    statusEl.textContent = '';
+    statusEl.classList.remove('status-info', 'status-loading');
   }
 
   function applyPreviewMode() {
@@ -457,6 +513,11 @@
     vscode.postMessage({ type: 'reload' });
   });
 
+  btnLoadDynamic.addEventListener('click', () => {
+    clearErrors();
+    vscode.postMessage({ type: 'loadDynamicProps' });
+  });
+
   btnSave.addEventListener('click', () => {
     const updates = collectUpdates();
     if (Object.keys(updates).length === 0) { return; }
@@ -503,12 +564,40 @@
     tbody.appendChild(tr);
   }
 
+  function createSourceBadge(entry) {
+    if (!entry || !entry.source) {
+      return null;
+    }
+    const span = document.createElement('span');
+    span.className = 'prop-source-badge prop-source-badge-' + entry.source;
+    span.textContent = entry.sourceLabel || (entry.source === 'static' ? '静态' : '动态');
+    const tooltip = entry.sourceDescription
+      || DEFAULT_SOURCE_DESCRIPTIONS[entry.source]
+      || '';
+    if (tooltip) {
+      span.title = tooltip;
+      span.setAttribute('aria-label', tooltip);
+    }
+    return span;
+  }
+
   function createReadonlyAccessBadge() {
     const span = document.createElement('span');
     span.className = 'access-badge access-badge-readonly';
     span.title = '只读属性';
     span.setAttribute('aria-label', '只读属性');
     span.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.75 7V5.75a3.25 3.25 0 1 1 6.5 0V7h.5A1.75 1.75 0 0 1 13.5 8.75v4.5A1.75 1.75 0 0 1 11.75 15h-7.5A1.75 1.75 0 0 1 2.5 13.25v-4.5A1.75 1.75 0 0 1 4.25 7h.5Zm5 0V5.75a1.75 1.75 0 1 0-3.5 0V7h3.5Zm-5.5 1.5a.25.25 0 0 0-.25.25v4.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-4.5a.25.25 0 0 0-.25-.25h-7.5Z"/></svg>';
+    return span;
+  }
+
+  function createDeferredAccessBadge(writable) {
+    const span = document.createElement('span');
+    span.className = 'access-badge access-badge-deferred';
+    span.title = writable
+      ? '动态属性尚未读取；读取后可编辑'
+      : '动态属性尚未读取';
+    span.setAttribute('aria-label', span.title);
+    span.textContent = '…';
     return span;
   }
 
@@ -587,8 +676,12 @@
     tr.classList.toggle('dirty', slot.current !== slot.original);
   }
 
-  function renderAccessCell(td, name, tdVal) {
+  function renderAccessCell(td, name, tdVal, entry) {
     td.innerHTML = '';
+    if (entry && entry.loaded === false) {
+      td.appendChild(createDeferredAccessBadge(!!entry.writable));
+      return;
+    }
     const slot = propRows[name];
     if (!slot || !slot.writable) {
       td.appendChild(createReadonlyAccessBadge());
@@ -596,7 +689,7 @@
     }
     td.appendChild(createWritableAccessButton(!!slot.editing, () => {
       slot.editing = !slot.editing;
-      rerenderEditableRow(td, tdVal, name);
+      rerenderEditableRow(td, tdVal, name, entry);
     }));
   }
 
@@ -683,12 +776,27 @@
     syncDirtyState(td, name);
   }
 
-  function rerenderEditableRow(tdRw, tdVal, name) {
+  function rerenderEditableRow(tdRw, tdVal, name, entry) {
     if (!(tdVal instanceof HTMLElement)) {
       return;
     }
-    renderAccessCell(tdRw, name, tdVal);
+    renderAccessCell(tdRw, name, tdVal, entry);
     renderEditableValueCell(tdVal, name);
+  }
+
+  function renderDeferredValueCell(td, entry) {
+    td.innerHTML = '';
+    const display = document.createElement('div');
+    display.className = 'value-display value-display-empty';
+    display.textContent = '按需读取';
+    td.appendChild(display);
+
+    const hint = document.createElement('div');
+    hint.className = 'value-hint';
+    hint.textContent = entry && entry.writable
+      ? '读取动态属性后可查看并编辑'
+      : '读取动态属性后显示';
+    td.appendChild(hint);
   }
 
   function renderTable(props) {
@@ -713,10 +821,17 @@
         if (!writable) { tr.classList.add('row-readonly'); }
 
         const tdName = document.createElement('td');
+        const nameHeader = document.createElement('div');
+        nameHeader.className = 'prop-name-header';
         const label = document.createElement('div');
         label.className = 'prop-name-label';
         label.textContent = entry.displayName || name;
-        tdName.appendChild(label);
+        nameHeader.appendChild(label);
+        const sourceBadge = createSourceBadge(entry);
+        if (sourceBadge) {
+          nameHeader.appendChild(sourceBadge);
+        }
+        tdName.appendChild(nameHeader);
         if (entry.displayName && entry.displayName !== name) {
           const alias = document.createElement('div');
           alias.className = 'prop-name-alias';
@@ -729,7 +844,10 @@
         const tdVal  = document.createElement('td');
         const tdDesc = document.createElement('td'); tdDesc.textContent = entry.description || '';
 
-        if (!entry.ok) {
+        if (entry.loaded === false) {
+          renderAccessCell(tdRw, name, tdVal, entry);
+          renderDeferredValueCell(tdVal, entry);
+        } else if (!entry.ok) {
           tdVal.textContent = '[不可用] ' + (entry.error || '');
           tdVal.style.opacity = '0.6';
         } else {
@@ -743,10 +861,13 @@
               writable: true,
               editing: false,
             };
-            rerenderEditableRow(tdRw, tdVal, name);
+            rerenderEditableRow(tdRw, tdVal, name, entry);
           } else {
-            renderAccessCell(tdRw, name, tdVal);
-            tdVal.textContent = value;
+            renderAccessCell(tdRw, name, tdVal, entry);
+            const display = document.createElement('div');
+            display.className = 'value-display' + (value ? '' : ' value-display-empty');
+            display.textContent = value || '(空)';
+            tdVal.appendChild(display);
           }
         }
 
