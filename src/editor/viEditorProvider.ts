@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
@@ -144,6 +145,10 @@ interface OutboundState {
 class ViEditorSession {
   private currentEntry: CacheEntry | null = null;
   private disposed = false;
+  /** 保证任意时刻只有一个 loadAndPush 在运行（防止 initialize + ready 并发触发）。 */
+  private _loadChain: Promise<void> = Promise.resolve();
+  /** 链尾是否已有待执行的非强制刷新任务（用于跳过重复的 ready 触发）。 */
+  private _loadPending = false;
 
   public constructor(
     private readonly document: ViDocument,
@@ -158,7 +163,7 @@ class ViEditorSession {
   }
 
   public async initialize(): Promise<void> {
-    await this.loadAndPush();
+    this._enqueueLoad();
   }
 
   public async handleMessage(message: InboundMessage): Promise<void> {
@@ -167,10 +172,11 @@ class ViEditorSession {
     }
     switch (message.type) {
       case 'ready':
-        await this.loadAndPush();
+        // initialize() 已将初始加载入队；若任务仍待执行则跳过，避免重复触发。
+        this._enqueueLoad();
         break;
       case 'reload':
-        await this.loadAndPush(true);
+        this._enqueueLoad(true);
         break;
       case 'saveProps': {
         const updates = message['updates'];
@@ -191,6 +197,28 @@ class ViEditorSession {
   // Cache + script orchestration
   // -------------------------------------------------------------------------
 
+  /**
+   * 将一次 loadAndPush 加入串行执行链。
+   * - 若 forceRefresh=false 且链尾已有待执行任务，则跳过（防止 initialize + ready 重复触发）。
+   * - forceRefresh=true（来自 reload 消息）始终入队，确保用户手动刷新总能执行。
+   */
+  private _enqueueLoad(forceRefresh = false): void {
+    if (this._loadPending && !forceRefresh) {
+      return;
+    }
+    this._loadPending = true;
+    this._loadChain = this._loadChain
+      .then(async () => {
+        this._loadPending = false;
+        if (!this.disposed) {
+          await this.loadAndPush(forceRefresh);
+        }
+      })
+      .catch(() => {
+        this._loadPending = false;
+      });
+  }
+
   private async loadAndPush(forceRefresh = false): Promise<void> {
     const viPath = this.document.uri.fsPath;
     let entry: CacheEntry;
@@ -201,7 +229,11 @@ class ViEditorSession {
       return;
     }
     this.currentEntry = entry;
-    await this.cache.ensureEntry(entry, viPath);
+    const { pathChanged } = await this.cache.ensureEntry(entry, viPath);
+    if (pathChanged) {
+      // 相同内容但不同路径：props.json 含路径相关字段，必须重新获取。
+      try { await fs.promises.unlink(entry.artifacts.propsJson); } catch { /* 文件不存在则忽略 */ }
+    }
 
     if (forceRefresh) {
       // Wipe the on-disk artifacts but keep the directory; cheaper than
@@ -284,17 +316,24 @@ class ViEditorSession {
   private async savePropsAndReload(updates: Record<string, unknown>): Promise<void> {
     const viPath = this.document.uri.fsPath;
     const updatesJson = JSON.stringify(updates);
+    const tmpFile = path.join(
+      os.tmpdir(),
+      `labview-vi-write-${crypto.randomBytes(8).toString('hex')}.json`,
+    );
     let result;
     try {
+      await fs.promises.writeFile(tmpFile, updatesJson, 'utf-8');
       result = await runPythonScriptOrFail(
         this.scripts.writeProps,
-        [viPath, '--updates', updatesJson],
+        [viPath, '--updates-file', tmpFile],
         this.pythonOptions,
       );
     } catch (err) {
       const detail = err instanceof PythonScriptError ? err.message : String(err);
       await this.postError(`写入属性失败: ${detail}`);
       return;
+    } finally {
+      try { await fs.promises.unlink(tmpFile); } catch { /* 清理失败可安全忽略 */ }
     }
 
     let saveError = '';

@@ -90,15 +90,24 @@ export class ViCache {
     return this.entryFor(hash);
   }
 
-  /** Ensure the entry's directory exists and write its meta.json. */
-  public async ensureEntry(entry: CacheEntry, viPath: string): Promise<void> {
+  /**
+   * Ensure the entry's directory exists and write its meta.json.
+   *
+   * Returns `{ pathChanged: true }` when an existing meta.json referenced a
+   * *different* viPath for the same hash — the caller should invalidate any
+   * path-dependent artifacts (e.g. props.json) in that case.
+   */
+  public async ensureEntry(entry: CacheEntry, viPath: string): Promise<{ pathChanged: boolean }> {
     await fs.promises.mkdir(entry.dir, { recursive: true });
     let needsMeta = true;
+    let pathChanged = false;
     try {
       const existing = await fs.promises.readFile(entry.artifacts.meta, 'utf-8');
       const parsed = JSON.parse(existing) as Partial<ViCacheMeta>;
       if (parsed && parsed.hash === entry.hash && parsed.viPath === viPath) {
         needsMeta = false;
+      } else if (parsed && parsed.hash === entry.hash && parsed.viPath !== undefined && parsed.viPath !== viPath) {
+        pathChanged = true;
       }
     } catch {
       // missing or unreadable — write fresh meta
@@ -115,6 +124,7 @@ export class ViCache {
         'utf-8',
       );
     }
+    return { pathChanged };
   }
 
   /** True if the named artifact exists for this entry. */

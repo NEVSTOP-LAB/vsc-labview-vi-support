@@ -49,7 +49,8 @@ suite('ViCache', () => {
   test('ensureEntry creates the directory and writes meta.json once', async () => {
     const cache = new ViCache(root);
     const e = await cache.entryForFile(tmpFile);
-    await cache.ensureEntry(e, tmpFile);
+    const r1 = await cache.ensureEntry(e, tmpFile);
+    assert.strictEqual(r1.pathChanged, false);
     assert.ok(fs.existsSync(e.artifacts.meta));
     const meta = JSON.parse(fs.readFileSync(e.artifacts.meta, 'utf-8'));
     assert.strictEqual(meta.viPath, tmpFile);
@@ -58,18 +59,20 @@ suite('ViCache', () => {
     const t1 = meta.createdAt;
 
     await new Promise((r) => setTimeout(r, 5));
-    await cache.ensureEntry(e, tmpFile);
+    const r2 = await cache.ensureEntry(e, tmpFile);
+    assert.strictEqual(r2.pathChanged, false);
     const meta2 = JSON.parse(fs.readFileSync(e.artifacts.meta, 'utf-8'));
     assert.strictEqual(meta2.createdAt, t1, 'meta.json should not be rewritten when up-to-date');
   });
 
-  test('ensureEntry rewrites meta when the stored viPath changes', async () => {
+  test('ensureEntry rewrites meta and reports pathChanged when the stored viPath changes', async () => {
     const cache = new ViCache(root);
     const e = await cache.entryForFile(tmpFile);
     await cache.ensureEntry(e, tmpFile);
     const t1 = JSON.parse(fs.readFileSync(e.artifacts.meta, 'utf-8')).createdAt;
     await new Promise((r) => setTimeout(r, 5));
-    await cache.ensureEntry(e, tmpFile + '-renamed');
+    const r = await cache.ensureEntry(e, tmpFile + '-renamed');
+    assert.strictEqual(r.pathChanged, true, 'pathChanged should be true when viPath differs');
     const meta = JSON.parse(fs.readFileSync(e.artifacts.meta, 'utf-8'));
     assert.strictEqual(meta.viPath, tmpFile + '-renamed');
     assert.notStrictEqual(meta.createdAt, t1);
