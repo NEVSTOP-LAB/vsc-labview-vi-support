@@ -29,7 +29,9 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCustomEditor:labview-vi-support.viEditor"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
@@ -38,7 +40,34 @@
         "title": "%commands.helloWorld%",
         "category": "%commands.category%"
       }
-    ]
+    ],
+    "customEditors": [
+      {
+        "viewType": "labview-vi-support.viEditor",
+        "displayName": "%editor.viEditor.displayName%",
+        "selector": [
+          { "filenamePattern": "*.vi" },
+          { "filenamePattern": "*.vit" }
+        ],
+        "priority": "default"
+      }
+    ],
+    "configuration": {
+      "title": "LabVIEW VI Support",
+      "properties": {
+        "labview-vi-support.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "%config.pythonPath.description%"
+        },
+        "labview-vi-support.scriptTimeoutMs": {
+          "type": "number",
+          "default": 120000,
+          "minimum": 5000,
+          "description": "%config.scriptTimeoutMs.description%"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run generate-icon && npm run package",

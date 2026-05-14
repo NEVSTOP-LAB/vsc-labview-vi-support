@@ -1,0 +1,239 @@
+:root {
+  color-scheme: light dark;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ---------- Toolbar ---------- */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border, #444);
+  background: var(--vscode-editorWidget-background, transparent);
+  flex: 0 0 auto;
+}
+
+.tb-btn {
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #fff);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.tb-btn:hover:not(:disabled) {
+  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+
+.tb-btn.active {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+}
+
+.tb-btn.primary {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+}
+
+.tb-btn.small {
+  padding: 2px 8px;
+  min-width: 28px;
+}
+
+.tb-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tb-spacer {
+  flex: 0 0 12px;
+}
+
+.zoom-label {
+  min-width: 48px;
+  text-align: center;
+  opacity: 0.85;
+}
+
+/* ---------- Status / errors ---------- */
+.status, .errors {
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--vscode-panel-border, #444);
+}
+
+.errors {
+  background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  color: var(--vscode-inputValidation-errorForeground, #fff);
+  white-space: pre-wrap;
+}
+
+/* ---------- Main split ---------- */
+.main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.image-area {
+  flex: 1 1 60%;
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  padding: 4px;
+  overflow: hidden;
+  min-height: 120px;
+}
+
+.image-pane {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--vscode-panel-border, #444);
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+}
+
+.image-pane.hidden {
+  display: none;
+}
+
+.pane-label {
+  padding: 4px 8px;
+  font-size: 0.9em;
+  opacity: 0.75;
+  border-bottom: 1px solid var(--vscode-panel-border, #444);
+  background: var(--vscode-editorWidget-background, transparent);
+}
+
+.viewport {
+  flex: 1 1 auto;
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  background:
+    repeating-conic-gradient(rgba(127,127,127,0.08) 0% 25%, transparent 0% 50%) 50% / 16px 16px;
+}
+
+.viewport.grabbing {
+  cursor: grabbing;
+}
+
+.vi-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  user-select: none;
+  -webkit-user-drag: none;
+  display: none;
+  /* Note: actual transform applied via JS */
+}
+
+.vi-image.loaded {
+  display: block;
+}
+
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.55;
+  font-style: italic;
+  pointer-events: none;
+}
+
+.placeholder.hidden {
+  display: none;
+}
+
+/* ---------- Table ---------- */
+.table-area {
+  flex: 1 1 40%;
+  overflow: auto;
+  border-top: 1px solid var(--vscode-panel-border, #444);
+}
+
+.table-area.hidden {
+  display: none;
+}
+
+.props-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.props-table th,
+.props-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border, #444);
+  text-align: left;
+  vertical-align: top;
+}
+
+.props-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--vscode-editorWidget-background, #2a2a2a);
+  z-index: 1;
+}
+
+.props-table td.empty {
+  opacity: 0.6;
+  font-style: italic;
+  text-align: center;
+}
+
+.props-table input[type="text"],
+.props-table textarea,
+.props-table select {
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 3px;
+  padding: 2px 4px;
+  font: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.props-table textarea {
+  min-height: 40px;
+  resize: vertical;
+}
+
+.props-table .row-readonly td:nth-child(4) {
+  opacity: 0.7;
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.props-table .dirty td:nth-child(1)::after {
+  content: ' •';
+  color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
+}
+
+.props-table .write-error td:nth-child(4) {
+  outline: 1px solid var(--vscode-inputValidation-errorBorder, #f48771);
+}

@@ -69,6 +69,7 @@ suite('pythonRunner.runPythonScript', () => {
 
   test('rejects with PythonScriptError on spawn error', async () => {
     const spawnFn: SpawnFn = ((..._args: unknown[]) => {
+      void _args;
       const child = new FakeChild();
       setImmediate(() => child.emit('error', new Error('ENOENT')));
       return child as unknown as ReturnType<SpawnFn>;
@@ -87,6 +88,7 @@ suite('pythonRunner.runPythonScript', () => {
   test('times out and kills the process', async () => {
     let killed: NodeJS.Signals | undefined;
     const spawnFn: SpawnFn = ((..._args: unknown[]) => {
+      void _args;
       const child = new FakeChild();
       // never emit 'close' — let the timer fire.
       const realKill = child.kill.bind(child);

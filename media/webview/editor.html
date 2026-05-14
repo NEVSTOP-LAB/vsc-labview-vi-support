@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="{{CSP}}" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LabVIEW VI</title>
+    <link rel="stylesheet" href="{{STYLE_URI}}" />
+  </head>
+  <body>
+    <div id="app">
+      <div class="toolbar" role="toolbar" aria-label="Panels">
+        <button id="btn-fp"     class="tb-btn"  title="Show only the front panel">FP Only</button>
+        <button id="btn-bd"     class="tb-btn"  title="Show only the block diagram">BD Only</button>
+        <button id="btn-both"   class="tb-btn active" title="Show both panels">Both</button>
+        <span class="tb-spacer"></span>
+        <button id="btn-table"  class="tb-btn active" title="Toggle the property table">Toggle Table</button>
+        <span class="tb-spacer"></span>
+        <button id="btn-zoom-out" class="tb-btn small" title="Zoom out">−</button>
+        <span id="zoom-label" class="zoom-label">100%</span>
+        <button id="btn-zoom-in"  class="tb-btn small" title="Zoom in">+</button>
+        <button id="btn-zoom-reset" class="tb-btn small" title="Reset view (or double-click image)">Reset</button>
+        <span class="tb-spacer"></span>
+        <button id="btn-save"   class="tb-btn primary" title="Write changes back to the .vi file" disabled>Save</button>
+        <button id="btn-reload" class="tb-btn"  title="Re-export images and re-read properties">Reload</button>
+      </div>
+
+      <div id="status" class="status" hidden></div>
+      <div id="errors" class="errors" hidden></div>
+
+      <div id="main" class="main">
+        <div id="image-area" class="image-area">
+          <div class="image-pane" data-pane="fp">
+            <div class="pane-label">Front Panel</div>
+            <div class="viewport" data-viewport="fp">
+              <img class="vi-image" data-img="fp" alt="Front panel" draggable="false" />
+              <div class="placeholder" data-placeholder="fp">No front panel image yet.</div>
+            </div>
+          </div>
+          <div class="image-pane" data-pane="bd">
+            <div class="pane-label">Block Diagram</div>
+            <div class="viewport" data-viewport="bd">
+              <img class="vi-image" data-img="bd" alt="Block diagram" draggable="false" />
+              <div class="placeholder" data-placeholder="bd">No block diagram image yet.</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="table-area" class="table-area">
+          <table id="props-table" class="props-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>R/W</th>
+                <th>Value</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody id="props-tbody">
+              <tr><td colspan="5" class="empty">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <script nonce="{{NONCE}}" src="{{SCRIPT_URI}}"></script>
+  </body>
+</html>
