@@ -639,11 +639,25 @@ _PREFERRED_EXEC_SYSTEM_LABELS = {
     7: "与调用者相同",
 }
 
+_EXEC_PRIORITY_LABELS = {
+    0: "后台",
+    1: "正常",
+    2: "较高",
+    3: "高",
+    4: "时间关键",
+    5: "子程序",
+}
+
 
 def _annotate_value(prop_name: str, raw_value: str) -> str:
     """为枚举型数值属性追加可读标签。"""
     if prop_name == "PreferredExecSystem":
         label = _PREFERRED_EXEC_SYSTEM_LABELS.get(
+            int(raw_value) if raw_value.lstrip("-").isdigit() else -1
+        )
+        return f"{raw_value} ({label})" if label else raw_value
+    if prop_name == "ExecPriority":
+        label = _EXEC_PRIORITY_LABELS.get(
             int(raw_value) if raw_value.lstrip("-").isdigit() else -1
         )
         return f"{raw_value} ({label})" if label else raw_value

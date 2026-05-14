@@ -47,6 +47,14 @@
       { value: 6, label: '6 (其他 2)' },
       { value: 7, label: '7 (与调用者相同)' },
     ],
+    ExecPriority: [
+      { value: 0, label: '0 (后台)' },
+      { value: 1, label: '1 (正常)' },
+      { value: 2, label: '2 (较高)' },
+      { value: 3, label: '3 (高)' },
+      { value: 4, label: '4 (时间关键)' },
+      { value: 5, label: '5 (子程序)' },
+    ],
   };
   const DEFAULT_GROUP_LABELS = {
     identity: '基础信息',

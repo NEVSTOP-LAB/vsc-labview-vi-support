@@ -235,6 +235,8 @@ html, body {
   overflow: auto;
   border-top: 1px solid var(--vscode-panel-border, #444);
   min-height: 120px;
+  padding-bottom: 20px;
+  box-sizing: border-box;
 }
 
 .table-area.hidden {
