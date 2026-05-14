@@ -251,7 +251,25 @@ body.splitter-dragging * {
 
 .props-table {
   width: 100%;
+  min-width: 980px;
   border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.props-table col.col-name {
+  width: 24%;
+}
+
+.props-table col.col-type {
+  width: 14%;
+}
+
+.props-table col.col-rw {
+  width: 78px;
+}
+
+.props-table col.col-value {
+  width: 28%;
 }
 
 .props-table th,
@@ -299,6 +317,19 @@ body.splitter-dragging * {
   opacity: 0.6;
   font-style: italic;
   text-align: center;
+}
+
+.props-table th:nth-child(2),
+.props-table td:nth-child(2),
+.props-table th:nth-child(3),
+.props-table td:nth-child(3) {
+  white-space: nowrap;
+}
+
+.props-table th:nth-child(5),
+.props-table td:nth-child(5) {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .props-table input[type="text"],
