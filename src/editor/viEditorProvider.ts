@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
+import { getCacheRoot } from '../cache/cacheDirectory';
 import { ViCache, type CacheEntry } from '../cache/viCache';
 import {
   exportViPanelImage,
@@ -30,7 +31,7 @@ export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViD
   public static readonly viewType = 'labview-vi-support.viEditor';
 
   public static cacheRoot(context: vscode.ExtensionContext): string {
-    return path.join(context.globalStorageUri.fsPath, 'vi-cache');
+    return getCacheRoot(context.globalStorageUri.fsPath);
   }
 
   public static register(context: vscode.ExtensionContext): vscode.Disposable {

@@ -1,6 +1,10 @@
-import * as fs from 'fs';
 import * as vscode from 'vscode';
 
+import {
+  clearCacheRoot,
+  ensureCacheRoot,
+  shouldSyncCacheDirectory,
+} from './cache/cacheDirectory';
 import { ViEditorProvider } from './editor/viEditorProvider';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -19,7 +23,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     'labview-vi-support.openCacheDirectory',
     async () => {
       const cacheRoot = ViEditorProvider.cacheRoot(context);
-      await fs.promises.mkdir(cacheRoot, { recursive: true });
+      await ensureCacheRoot(cacheRoot);
       await syncCacheDirectorySetting(context);
       await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(cacheRoot));
     },
@@ -39,8 +43,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
 
       const cacheRoot = ViEditorProvider.cacheRoot(context);
-      await fs.promises.rm(cacheRoot, { recursive: true, force: true });
-      await fs.promises.mkdir(cacheRoot, { recursive: true });
+    await clearCacheRoot(cacheRoot);
       await syncCacheDirectorySetting(context);
 
       const next = await vscode.window.showInformationMessage(
@@ -61,7 +64,7 @@ async function syncCacheDirectorySetting(context: vscode.ExtensionContext): Prom
   const cacheRoot = ViEditorProvider.cacheRoot(context);
   const config = vscode.workspace.getConfiguration('labview-vi-support');
   const current = config.get<string>('cacheDirectory') ?? '';
-  if (current === cacheRoot) {
+  if (!shouldSyncCacheDirectory(current, cacheRoot)) {
     return;
   }
   await config.update('cacheDirectory', cacheRoot, vscode.ConfigurationTarget.Global);
