@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "node scripts/copilot-local-dev-hook.js",
+        "timeout": 30
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node scripts/copilot-local-dev-hook.js",
+        "timeout": 600
+      }
+    ]
+  }
+}
