@@ -3,6 +3,7 @@
   "commands.helloWorld": "Hello World",
   "commands.openCacheDirectory": "Open Cache Directory",
   "commands.clearCache": "Clear Cache",
+  "commands.configureLabVIEWVersion": "Configure LabVIEW Version",
   "editor.viEditor.displayName": "LabVIEW VI Preview",
   "config.cacheDirectory.markdownDescription": "Current cache directory. This value is maintained by the extension and should not be edited manually.\n\n[Open Cache Directory](command:labview-vi-support.openCacheDirectory) | [Clear Cache](command:labview-vi-support.clearCache)",
   "config.viewMode.description": "Default editor view mode. Configure this in User Settings for a system-wide default, or override it in Workspace Settings to share one view mode across the current project.",

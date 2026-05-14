@@ -20,8 +20,39 @@
   文本域、布尔下拉和数字输入控件，并补充从文件头解析出的保存版本。
   修改通过 VI Server（由扩展内置的 TypeScript + Windows Script Host +
   LabVIEW COM 驱动）写回 VI 并保存。
+- **LabVIEW 版本解析与状态栏配置**：状态栏会显示当前活动资源对应的
+  LabVIEW 版本来源；点击后会列出本机已安装的全部 LabVIEW 版本，并在
+  工作区根目录写入或更新 `DEV ENVIRONMENT LabVIEW ...` 标记文件。
 - **MD5 缓存**：FP/BD 图像与属性 JSON 缓存在扩展的全局存储目录中，缓存
   键是源 `.vi` 文件内容的 MD5。再次打开同一份 VI 几乎是瞬时的。
+
+## LabVIEW 版本判定规则
+
+扩展现在按以下优先级解析目标 LabVIEW 版本：
+
+1. **目录标记文件**：如果当前目录或任一祖先目录存在
+   `DEV ENVIRONMENT LabVIEW 2020`、
+   `DEV ENVIRONMENT LabVIEW 2020 (64bit)`、
+   `DEV ENVIRONMENT LabVIEW 2020 (32bit)` 这类文件，则该目录树优先采用
+   这个版本。距离当前文件最近的目录标记优先。
+2. **`.lvproj` 项目文件**：如果没有目录标记，则在当前目录到根目录的链路上
+   查找 `.lvproj`，并从 XML 中的版本字段解析目标版本；距离当前文件最近的
+   `.lvproj` 优先。
+3. **VI 文件头**：如果目录标记和 `.lvproj` 都不存在，则回落到读取 `.vi` /
+   `.vit` 文件头中的保存版本。
+
+状态栏展示的也是这一套解析结果，因此能直接看出当前版本来自目录标记、
+`.lvproj` 还是 VI 文件头。
+
+## 未安装版本的处理
+
+如果目录标记或 `.lvproj` 指向的 LabVIEW 版本在本机未安装：
+
+- 状态栏会以警告样式显示该版本。
+- 图像导出、属性读取、属性写入这类动态操作会**严格失败**，而不是偷偷回退到
+  其他已安装版本，避免误连错误的 LabVIEW 实例。
+- 点击状态栏按钮后，仍可从“本机已安装版本”列表里改写根目录标记，或清除
+  根目录标记，回退到 `.lvproj` / VI 文件头判断。
 
 ## 运行环境
 
@@ -30,8 +61,9 @@ worker（`prototype/scripts/*.vbs`），这些 worker 再通过 ActiveX/COM 与
 LabVIEW 通信，因此：
 
 - **仅支持 Windows**：VI Server 桥接基于 COM。
-- **必须安装与 VI 保存版本相匹配的 LabVIEW**（脚本会从 VI 文件头中
-  自动识别版本与位数）。
+- **动态功能要求本机安装与解析结果相匹配的 LabVIEW**。解析结果优先来自
+  目录标记和 `.lvproj`，否则才回落到 VI 文件头；不匹配时不会再自动退到其他
+  主版本或位数。
 - **不需要额外安装 Python、pywin32 或 Pillow**。
 
 ## 设置项
@@ -42,6 +74,16 @@ LabVIEW 通信，因此：
   `table-only`，可在用户设置中作为系统级默认值配置，也可在工作区设置中
   覆盖为当前项目统一使用的模式。
 - `labview-vi-support.scriptTimeoutMs` — 每次脚本调用的超时（毫秒）。
+
+## 根目录版本配置
+
+点击状态栏里的 `LabVIEW: ...` 按钮后，扩展会枚举注册表中已安装的 LabVIEW
+版本，并允许把选中的版本写成根目录标记文件。当前实现采用以下约定：
+
+- 64 位安装写成 `DEV ENVIRONMENT LabVIEW 2020 (64bit)`。
+- 32 位安装在需要显式区分时写成 `DEV ENVIRONMENT LabVIEW 2020 (32bit)`。
+- 手工创建的 `DEV ENVIRONMENT LabVIEW 2020` 仍然被识别，表示只锁定版本、
+  不显式指定位数。
 
 ## 写入脚本的当前状态
 

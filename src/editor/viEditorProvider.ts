@@ -29,6 +29,10 @@ import {
   type ViewMode,
 } from './viewMode';
 
+interface ViEditorProviderHooks {
+  onActiveDocumentChanged?(uri: vscode.Uri | undefined): void;
+}
+
 /**
  * LabVIEW `.vi` / `.vit` 文件的自定义编辑器。
  *
@@ -48,11 +52,14 @@ export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViD
     return getCacheRoot(context.globalStorageUri.fsPath);
   }
 
-  public static register(context: vscode.ExtensionContext): vscode.Disposable {
+  public static register(
+    context: vscode.ExtensionContext,
+    hooks: ViEditorProviderHooks = {},
+  ): vscode.Disposable {
     const cacheRoot = ViEditorProvider.cacheRoot(context);
     const cache = new ViCache(cacheRoot);
     const scripts = resolveScriptPaths(context.extensionPath);
-    const provider = new ViEditorProvider(context, cache, scripts);
+    const provider = new ViEditorProvider(context, cache, scripts, hooks);
     const editorRegistration = vscode.window.registerCustomEditorProvider(
       ViEditorProvider.viewType,
       provider,
@@ -73,6 +80,7 @@ export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViD
     private readonly context: vscode.ExtensionContext,
     private readonly cache: ViCache,
     private readonly scripts: ScriptPaths,
+    private readonly hooks: ViEditorProviderHooks,
   ) {
     this.currentViewMode = this.readConfiguredViewMode();
   }
@@ -107,6 +115,16 @@ export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViD
 
     webviewPanel.webview.onDidReceiveMessage((msg) => {
       void session.handleMessage(msg);
+    });
+
+    if (webviewPanel.active) {
+      this.hooks.onActiveDocumentChanged?.(document.uri);
+    }
+
+    webviewPanel.onDidChangeViewState((event) => {
+      if (event.webviewPanel.active) {
+        this.hooks.onActiveDocumentChanged?.(document.uri);
+      }
     });
 
     webviewPanel.onDidDispose(() => {

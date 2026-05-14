@@ -11,6 +11,13 @@ import {
 } from './propsParser';
 import { decorateProps, WRITABLE_PROP_TYPES } from './propMetadata';
 import type { ScriptPaths } from './scriptPaths';
+import {
+  formatLabVIEWExpectedVersion,
+  resolveLabVIEWVersionForPath,
+  type LabVIEWArchitecture,
+  type LabVIEWVersion,
+  type ResolvedLabVIEWVersion,
+} from './labviewVersionResolver';
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_WORKER_TIMEOUT_SECONDS = 45;
@@ -36,16 +43,16 @@ interface RunCommandResult {
   signal: NodeJS.Signals | null;
 }
 
-interface LabVIEWVersion {
-  major: number;
-  minor: number;
-}
-
-interface InstalledLabVIEW extends LabVIEWVersion {
+export interface InstalledLabVIEW extends LabVIEWVersion {
   registryKey: string;
   installDir: string;
   exePath: string;
-  architecture: string;
+  architecture: LabVIEWArchitecture;
+}
+
+interface RuntimeTargetSelection {
+  requestedVersion: ResolvedLabVIEWVersion | null;
+  installation: InstalledLabVIEW | undefined;
 }
 
 interface ImageWorkerResponse {
@@ -139,18 +146,18 @@ export async function exportViPanelImages(
   if (!normalizedOutputs.fp && !normalizedOutputs.bd) {
     throw new Error('At least one image output path must be provided.');
   }
-  const installation = await resolveTargetInstallation(absViPath);
+  const target = await resolveTargetInstallation(absViPath);
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const responseText = await runWorkerWithResponse({
-        scriptHost: selectScriptHost(installation?.architecture),
+        scriptHost: selectScriptHost(target.installation?.architecture ?? target.requestedVersion?.architecture),
         scriptPath: scripts.savePanelImageWorker,
         args: [
           `/viPath:${absViPath}`,
           ...(normalizedOutputs.fp ? [`/fpOutputPath:${normalizedOutputs.fp}`] : []),
           ...(normalizedOutputs.bd ? [`/bdOutputPath:${normalizedOutputs.bd}`] : []),
-          ...buildTargetArgs(installation),
+          ...buildTargetArgs(target),
         ],
         timeoutMs: options.timeoutMs,
       });
@@ -187,13 +194,13 @@ export async function readViProps(
 ): Promise<PropsJsonEnvelope> {
   ensureWindows();
   const absViPath = path.resolve(viPath);
-  const installation = await resolveTargetInstallation(absViPath);
+  const target = await resolveTargetInstallation(absViPath);
   const responseText = await runWorkerWithResponse({
-    scriptHost: selectScriptHost(installation?.architecture),
+    scriptHost: selectScriptHost(target.installation?.architecture ?? target.requestedVersion?.architecture),
     scriptPath: scripts.readPropsWorker,
     args: [
       `/viPath:${absViPath}`,
-      ...buildTargetArgs(installation),
+      ...buildTargetArgs(target),
     ],
     timeoutMs: options.timeoutMs,
   });
@@ -242,7 +249,7 @@ export async function writeViProps(
 ): Promise<PropsJsonEnvelope> {
   ensureWindows();
   const absViPath = path.resolve(viPath);
-  const installation = await resolveTargetInstallation(absViPath);
+  const target = await resolveTargetInstallation(absViPath);
   const requestPath = path.join(
     os.tmpdir(),
     `labview-vi-write-${Math.random().toString(16).slice(2)}.in`,
@@ -252,13 +259,13 @@ export async function writeViProps(
     await fs.promises.writeFile(requestPath, requestBody, 'ascii');
 
     const responseText = await runWorkerWithResponse({
-      scriptHost: selectScriptHost(installation?.architecture),
+      scriptHost: selectScriptHost(target.installation?.architecture ?? target.requestedVersion?.architecture),
       scriptPath: scripts.writePropsWorker,
       args: [
         `/viPath:${absViPath}`,
         `/requestPath:${requestPath}`,
         '/save:1',
-        ...buildTargetArgs(installation),
+        ...buildTargetArgs(target),
       ],
       timeoutMs: options.timeoutMs,
     });
@@ -335,16 +342,31 @@ function normalizeWritableValue(
 
 let cachedInstallationsPromise: Promise<InstalledLabVIEW[]> | null = null;
 
-async function resolveTargetInstallation(viPath: string): Promise<InstalledLabVIEW | undefined> {
-  const savedVersion = await readViSavedVersion(viPath);
-  if (!savedVersion) {
-    return undefined;
+async function resolveTargetInstallation(viPath: string): Promise<RuntimeTargetSelection> {
+  const requestedVersion = await resolveLabVIEWVersionForPath(viPath, readViSavedVersion);
+  if (!requestedVersion) {
+    return {
+      requestedVersion: null,
+      installation: undefined,
+    };
   }
+
   const installations = await discoverInstalledLabVIEWs();
-  return selectInstalledLabVIEW(installations, savedVersion.major, savedVersion.minor);
+  return {
+    requestedVersion,
+    installation: selectInstalledLabVIEW(
+      installations,
+      requestedVersion.major,
+      requestedVersion.minor,
+      requestedVersion.architecture,
+    ),
+  };
 }
 
-async function discoverInstalledLabVIEWs(): Promise<InstalledLabVIEW[]> {
+export async function discoverInstalledLabVIEWs(options: { refresh?: boolean } = {}): Promise<InstalledLabVIEW[]> {
+  if (options.refresh) {
+    cachedInstallationsPromise = null;
+  }
   if (cachedInstallationsPromise) {
     return cachedInstallationsPromise;
   }
@@ -389,6 +411,9 @@ async function discoverInstalledLabVIEWs(): Promise<InstalledLabVIEW[]> {
         continue;
       }
       const architecture = await readPeArchitecture(exePath);
+      if (!architecture) {
+        continue;
+      }
       const key = `${parsedVersion.major}.${parsedVersion.minor}|${architecture}|${exePath.toLowerCase()}`;
       if (seen.has(key)) {
         continue;
@@ -443,7 +468,7 @@ function parseVersionKey(versionKey: string): LabVIEWVersion | null {
   return { major: Number(match[1]), minor: Number(match[2]) };
 }
 
-async function readPeArchitecture(exePath: string): Promise<string> {
+async function readPeArchitecture(exePath: string): Promise<LabVIEWArchitecture | null> {
   const file = await fs.promises.open(exePath, 'r');
   try {
     const offsetBuffer = Buffer.alloc(4);
@@ -461,7 +486,7 @@ async function readPeArchitecture(exePath: string): Promise<string> {
     if (machine === PE_MACHINE_AMD64) {
       return 'x64';
     }
-    return `unknown(0x${machine.toString(16).padStart(4, '0').toUpperCase()})`;
+    return null;
   } finally {
     await file.close();
   }
@@ -471,36 +496,32 @@ function selectInstalledLabVIEW(
   installations: InstalledLabVIEW[],
   targetMajor: number,
   targetMinor: number,
+  targetArchitecture?: LabVIEWArchitecture,
 ): InstalledLabVIEW | undefined {
-  const defaultBitness = process.arch === 'x64' ? 'x64' : 'x86';
-  const exact = installations
-    .filter((entry) => entry.major === targetMajor && entry.minor === targetMinor)
-    .sort((left, right) => scoreByBitness(left.architecture, defaultBitness) - scoreByBitness(right.architecture, defaultBitness));
-  if (exact.length > 0) {
-    return exact[0];
-  }
-
-  const sameMajor = installations
-    .filter((entry) => entry.major === targetMajor)
-    .sort((left, right) => (
-      Math.abs(left.minor - targetMinor) - Math.abs(right.minor - targetMinor)
-      || scoreByBitness(left.architecture, defaultBitness) - scoreByBitness(right.architecture, defaultBitness)
-    ));
-  return sameMajor[0];
+  const preferredBitness = targetArchitecture ?? (process.arch === 'x64' ? 'x64' : 'x86');
+  return installations
+    .filter((entry) => (
+      entry.major === targetMajor
+      && entry.minor === targetMinor
+      && (!targetArchitecture || entry.architecture === targetArchitecture)
+    ))
+    .sort((left, right) => scoreByBitness(left.architecture, preferredBitness) - scoreByBitness(right.architecture, preferredBitness))[0];
 }
 
 function scoreByBitness(actual: string, preferred: string): number {
   return actual === preferred ? 0 : 1;
 }
 
-function buildTargetArgs(installation: InstalledLabVIEW | undefined): string[] {
-  if (!installation) {
-    return [];
+function buildTargetArgs(target: RuntimeTargetSelection): string[] {
+  const args: string[] = [];
+  if (target.requestedVersion) {
+    args.push(`/expectedVersion:${formatLabVIEWExpectedVersion(target.requestedVersion)}`);
   }
-  return [
-    `/targetExe:${installation.exePath}`,
-    `/expectedDirectory:${installation.installDir}`,
-  ];
+  if (target.installation) {
+    args.push(`/targetExe:${target.installation.exePath}`);
+    args.push(`/expectedDirectory:${target.installation.installDir}`);
+  }
+  return args;
 }
 
 function selectScriptHost(architecture: string | undefined): string {

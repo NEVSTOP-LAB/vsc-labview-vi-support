@@ -49,6 +49,11 @@
         "command": "labview-vi-support.clearCache",
         "title": "%commands.clearCache%",
         "category": "%commands.category%"
+      },
+      {
+        "command": "labview-vi-support.configureLabVIEWVersion",
+        "title": "%commands.configureLabVIEWVersion%",
+        "category": "%commands.category%"
       }
     ],
     "customEditors": [

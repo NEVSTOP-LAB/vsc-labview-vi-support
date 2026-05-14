@@ -6,10 +6,28 @@ import {
   shouldSyncCacheDirectory,
 } from './cache/cacheDirectory';
 import { ViEditorProvider } from './editor/viEditorProvider';
+import { LabVIEWVersionStatusController } from './labviewVersionStatus';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  context.subscriptions.push(ViEditorProvider.register(context));
+  const versionStatus = new LabVIEWVersionStatusController();
+  context.subscriptions.push(versionStatus);
+  context.subscriptions.push(ViEditorProvider.register(context, {
+    onActiveDocumentChanged: (uri) => versionStatus.setActiveResource(uri),
+  }));
   await syncCacheDirectorySetting(context);
+  versionStatus.setActiveResource(vscode.window.activeTextEditor?.document.uri);
+  context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor((editor) => {
+    versionStatus.setActiveResource(editor?.document.uri);
+  }));
+  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
+    void versionStatus.refresh();
+  }));
+  context.subscriptions.push(vscode.commands.registerCommand(
+    'labview-vi-support.configureLabVIEWVersion',
+    async () => {
+      await versionStatus.configureVersion();
+    },
+  ));
 
   const helloDisposable = vscode.commands.registerCommand(
     'labview-vi-support.helloWorld',
@@ -56,6 +74,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     },
   );
   context.subscriptions.push(clearCacheDisposable);
+
+  await versionStatus.refresh();
 }
 
 export function deactivate(): void {}
