@@ -514,6 +514,34 @@
     return span;
   }
 
+  function formatPropType(type) {
+    switch (type) {
+      case 'String':
+        return { label: '字符串', alias: 'String' };
+      case 'Boolean':
+        return { label: '布尔值', alias: 'Boolean' };
+      case 'Number':
+        return { label: '数值', alias: 'Number' };
+      default:
+        return { label: String(type || ''), alias: '' };
+    }
+  }
+
+  function appendTypeCell(td, type) {
+    const formatted = formatPropType(type);
+    const label = document.createElement('div');
+    label.className = 'type-label';
+    label.textContent = formatted.label;
+    td.appendChild(label);
+
+    if (formatted.alias && formatted.alias !== formatted.label) {
+      const alias = document.createElement('div');
+      alias.className = 'type-alias';
+      alias.textContent = formatted.alias;
+      td.appendChild(alias);
+    }
+  }
+
   function renderTable(props) {
     // Reset row tracking; rebuild from scratch each refresh.
     Object.keys(propRows).forEach((k) => delete propRows[k]);
@@ -547,7 +575,7 @@
           tdName.appendChild(alias);
         }
 
-        const tdType = document.createElement('td'); tdType.textContent = entry.type || '';
+        const tdType = document.createElement('td'); appendTypeCell(tdType, entry.type);
         const tdRw   = document.createElement('td'); tdRw.appendChild(createAccessBadge(writable));
         const tdVal  = document.createElement('td');
         const tdDesc = document.createElement('td'); tdDesc.textContent = entry.description || '';

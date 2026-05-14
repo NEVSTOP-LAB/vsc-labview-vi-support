@@ -257,7 +257,7 @@ body.splitter-dragging * {
 }
 
 .props-table col.col-name {
-  width: 24%;
+  width: 16%;
 }
 
 .props-table col.col-type {
@@ -313,14 +313,23 @@ body.splitter-dragging * {
   word-break: break-all;
 }
 
+.type-label {
+  font-weight: 500;
+}
+
+.type-alias {
+  margin-top: 2px;
+  opacity: 0.6;
+  font-size: 0.85em;
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
 .props-table td.empty {
   opacity: 0.6;
   font-style: italic;
   text-align: center;
 }
 
-.props-table th:nth-child(2),
-.props-table td:nth-child(2),
 .props-table th:nth-child(3),
 .props-table td:nth-child(3) {
   white-space: nowrap;
