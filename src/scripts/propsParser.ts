@@ -232,7 +232,14 @@ export function mergeStaticPropsIntoEnvelope(
   envelope: PropsJsonEnvelope,
   staticEnvelope: PropsJsonEnvelope,
 ): PropsJsonEnvelope {
-  const props = { ...envelope.props };
+  // Drop all stale static entries from the cached envelope first so that
+  // removed or renamed static props do not silently persist across refreshes.
+  const props: typeof envelope.props = {};
+  for (const [name, entry] of Object.entries(envelope.props)) {
+    if (entry.source !== 'static') {
+      props[name] = entry;
+    }
+  }
   for (const [name, entry] of Object.entries(staticEnvelope.props)) {
     if (entry.source === 'static') {
       props[name] = entry;

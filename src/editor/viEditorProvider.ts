@@ -307,10 +307,13 @@ class ViEditorSession {
     this._dynamicPropsPending = true;
     this._loadChain = this._loadChain
       .then(async () => {
-        this._dynamicPropsPending = false;
+        // Keep _dynamicPropsPending = true while the LabVIEW call is in flight
+        // so that repeated button clicks during the round-trip are deduplicated.
+        // Reset only after loadDynamicProps settles.
         if (!this.disposed) {
           await this.loadDynamicProps(forceRefresh);
         }
+        this._dynamicPropsPending = false;
       })
       .catch(() => {
         this._dynamicPropsPending = false;
