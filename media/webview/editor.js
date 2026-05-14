@@ -503,6 +503,17 @@
     tbody.appendChild(tr);
   }
 
+  function createAccessBadge(writable) {
+    const span = document.createElement('span');
+    span.className = 'access-badge ' + (writable ? 'access-badge-writable' : 'access-badge-readonly');
+    span.title = writable ? '可编辑' : '只读';
+    span.setAttribute('aria-label', writable ? '可编辑' : '只读');
+    span.innerHTML = writable
+      ? '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.8 8.8a1.75 1.75 0 0 1-.82.452l-3.057.68a.75.75 0 0 1-.895-.895l.68-3.057a1.75 1.75 0 0 1 .452-.82l8.8-8.8Zm1.414 1.06a.25.25 0 0 0-.354 0l-.72.72 1.44 1.44.72-.72a.25.25 0 0 0 0-.354l-1.086-1.086ZM11.732 5.707l-1.44-1.44-7.1 7.1a.25.25 0 0 0-.064.117l-.391 1.758 1.758-.391a.25.25 0 0 0 .117-.064l7.1-7.1Z"/></svg>'
+      : '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.75 7V5.75a3.25 3.25 0 1 1 6.5 0V7h.5A1.75 1.75 0 0 1 13.5 8.75v4.5A1.75 1.75 0 0 1 11.75 15h-7.5A1.75 1.75 0 0 1 2.5 13.25v-4.5A1.75 1.75 0 0 1 4.25 7h.5Zm5 0V5.75a1.75 1.75 0 1 0-3.5 0V7h3.5Zm-5.5 1.5a.25.25 0 0 0-.25.25v4.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-4.5a.25.25 0 0 0-.25-.25h-7.5Z"/></svg>';
+    return span;
+  }
+
   function renderTable(props) {
     // Reset row tracking; rebuild from scratch each refresh.
     Object.keys(propRows).forEach((k) => delete propRows[k]);
@@ -537,7 +548,7 @@
         }
 
         const tdType = document.createElement('td'); tdType.textContent = entry.type || '';
-        const tdRw   = document.createElement('td'); tdRw.textContent   = writable ? '读写' : '只读';
+        const tdRw   = document.createElement('td'); tdRw.appendChild(createAccessBadge(writable));
         const tdVal  = document.createElement('td');
         const tdDesc = document.createElement('td'); tdDesc.textContent = entry.description || '';
 

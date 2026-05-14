@@ -326,10 +326,41 @@ body.splitter-dragging * {
   white-space: nowrap;
 }
 
+.props-table th:nth-child(3),
+.props-table td:nth-child(3) {
+  text-align: center;
+}
+
 .props-table th:nth-child(5),
 .props-table td:nth-child(5) {
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.access-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid var(--vscode-panel-border, #444);
+  background: var(--vscode-editorWidget-background, transparent);
+  color: var(--vscode-foreground);
+}
+
+.access-badge svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
+.access-badge-writable {
+  color: var(--vscode-charts-green, #89d185);
+}
+
+.access-badge-readonly {
+  color: var(--vscode-descriptionForeground, #9d9d9d);
 }
 
 .props-table input[type="text"],
