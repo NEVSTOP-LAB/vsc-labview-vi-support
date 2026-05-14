@@ -5,9 +5,11 @@ import { spawn, type SpawnOptions } from 'child_process';
 
 import {
   parsePropsResponseText,
+  type PropEntry,
   type PropsJsonEnvelope,
   type PropsResponse,
 } from './propsParser';
+import { decorateProps, WRITABLE_PROP_TYPES } from './propMetadata';
 import type { ScriptPaths } from './scriptPaths';
 
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -16,24 +18,6 @@ const VI_VERSION_SCAN_BYTES = 512;
 const VI_VERSION_MARKER = Buffer.from([0x00, 0x00, 0x00, 0xa0]);
 const PE_MACHINE_I386 = 0x014c;
 const PE_MACHINE_AMD64 = 0x8664;
-
-const WRITABLE_PROP_TYPES: Record<string, 'String' | 'Boolean' | 'Number'> = {
-  Description: 'String',
-  HistoryText: 'String',
-  PrintHeader: 'String',
-  PrintFooter: 'String',
-  AllowDebugging: 'Boolean',
-  BreakOnError: 'Boolean',
-  SuspendWhenCalled: 'Boolean',
-  ShowFPOnCall: 'Boolean',
-  CloseAfterCall: 'Boolean',
-  Scalable: 'Boolean',
-  ShowScrollbars: 'Boolean',
-  InlineSubVI: 'Boolean',
-  ReentrantType: 'Number',
-  Priority: 'Number',
-  FPTitle: 'String',
-};
 
 export interface LabVIEWRuntimeOptions {
   timeoutMs?: number;
@@ -72,6 +56,8 @@ interface ImageWorkerResponse {
   connectedDirectory: string;
   attempts: number;
   outputPath: string;
+  fpOutputPath: string;
+  bdOutputPath: string;
 }
 
 export function parseViSavedVersionHeader(header: Buffer): LabVIEWVersion | null {
@@ -126,9 +112,33 @@ export async function exportViPanelImage(
   scripts: ScriptPaths,
   options: LabVIEWRuntimeOptions = {},
 ): Promise<string> {
+  const outputs = await exportViPanelImages(
+    viPath,
+    { [panel]: outputPath },
+    scripts,
+    options,
+  );
+  return outputs[panel] ?? path.resolve(outputPath);
+}
+
+export async function exportViPanelImages(
+  viPath: string,
+  outputPaths: Partial<Record<'fp' | 'bd', string>>,
+  scripts: ScriptPaths,
+  options: LabVIEWRuntimeOptions = {},
+): Promise<Partial<Record<'fp' | 'bd', string>>> {
   ensureWindows();
   const absViPath = path.resolve(viPath);
-  const absOutputPath = path.resolve(outputPath);
+  const normalizedOutputs: Partial<Record<'fp' | 'bd', string>> = {};
+  if (outputPaths.fp) {
+    normalizedOutputs.fp = path.resolve(outputPaths.fp);
+  }
+  if (outputPaths.bd) {
+    normalizedOutputs.bd = path.resolve(outputPaths.bd);
+  }
+  if (!normalizedOutputs.fp && !normalizedOutputs.bd) {
+    throw new Error('At least one image output path must be provided.');
+  }
   const installation = await resolveTargetInstallation(absViPath);
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -138,17 +148,25 @@ export async function exportViPanelImage(
         scriptPath: scripts.savePanelImageWorker,
         args: [
           `/viPath:${absViPath}`,
-          `/panel:${panel}`,
-          `/outputPath:${absOutputPath}`,
+          ...(normalizedOutputs.fp ? [`/fpOutputPath:${normalizedOutputs.fp}`] : []),
+          ...(normalizedOutputs.bd ? [`/bdOutputPath:${normalizedOutputs.bd}`] : []),
           ...buildTargetArgs(installation),
         ],
         timeoutMs: options.timeoutMs,
       });
       const response = parseImageWorkerResponseText(responseText);
       if (response.ok) {
-        return response.outputPath || absOutputPath;
+        return {
+          ...(normalizedOutputs.fp
+            ? { fp: response.fpOutputPath || response.outputPath || normalizedOutputs.fp }
+            : {}),
+          ...(normalizedOutputs.bd
+            ? { bd: response.bdOutputPath || response.outputPath || normalizedOutputs.bd }
+            : {}),
+        };
       }
-      lastError = new Error(response.reason || `Image export worker failed for panel=${panel}.`);
+      const targets = Object.keys(normalizedOutputs).join(',') || 'unknown';
+      lastError = new Error(response.reason || `Image export worker failed for panels=${targets}.`);
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
     }
@@ -158,7 +176,8 @@ export async function exportViPanelImage(
     }
   }
 
-  throw lastError ?? new Error(`Image export worker failed for panel=${panel}.`);
+  const targets = Object.keys(normalizedOutputs).join(',') || 'unknown';
+  throw lastError ?? new Error(`Image export worker failed for panels=${targets}.`);
 }
 
 export async function readViProps(
@@ -183,6 +202,36 @@ export async function readViProps(
     throw new Error(response.reason || 'Read props worker failed.');
   }
   return toPropsEnvelope(absViPath, response);
+}
+
+export async function readStaticViProps(viPath: string): Promise<PropsJsonEnvelope> {
+  const absViPath = path.resolve(viPath);
+  const savedVersion = formatLabVIEWVersion(await readViSavedVersion(absViPath));
+  const staticProps: Record<string, PropEntry> = {
+    Name: {
+      ok: true,
+      type: 'String',
+      value: path.basename(absViPath),
+      error: null,
+      loaded: true,
+    },
+    Path: {
+      ok: true,
+      type: 'String',
+      value: absViPath,
+      error: null,
+      loaded: true,
+    },
+  };
+  return {
+    viPath: absViPath,
+    lvVersion: savedVersion,
+    dynamicPropsLoaded: false,
+    props: decorateProps(staticProps, {
+      includeUnloadedDynamic: true,
+      savedVersion,
+    }),
+  };
 }
 
 export async function writeViProps(
@@ -217,7 +266,7 @@ export async function writeViProps(
     if (!response.ok) {
       throw new Error(response.reason || 'Write props worker failed.');
     }
-    return toPropsEnvelope(absViPath, response);
+    return toPropsEnvelope(absViPath, response, { includeUnavailable: true });
   } finally {
     try {
       await fs.promises.unlink(requestPath);
@@ -519,6 +568,8 @@ function parseImageWorkerResponseText(text: string): ImageWorkerResponse {
     connectedDirectory: decodeBase64Utf8(raw.connected_directory_b64 ?? ''),
     attempts: parseInt(raw.attempts ?? '0', 10) || 0,
     outputPath: decodeBase64Utf8(raw.output_path_b64 ?? ''),
+    fpOutputPath: decodeBase64Utf8(raw.fp_output_path_b64 ?? ''),
+    bdOutputPath: decodeBase64Utf8(raw.bd_output_path_b64 ?? ''),
   };
 }
 
@@ -529,11 +580,27 @@ function decodeBase64Utf8(value: string): string {
   return Buffer.from(value, 'base64').toString('utf8').replace(/^\ufeff/, '');
 }
 
-function toPropsEnvelope(viPath: string, response: PropsResponse): PropsJsonEnvelope {
+function formatLabVIEWVersion(version: LabVIEWVersion | null): string | null {
+  if (!version) {
+    return null;
+  }
+  return `${version.major}.${version.minor}`;
+}
+
+async function toPropsEnvelope(
+  viPath: string,
+  response: PropsResponse,
+  options: { includeUnavailable?: boolean } = {},
+): Promise<PropsJsonEnvelope> {
+  const savedVersion = formatLabVIEWVersion(await readViSavedVersion(viPath));
   const envelope: PropsJsonEnvelope = {
     viPath,
     lvVersion: response.connectedVersion || null,
-    props: response.props,
+    dynamicPropsLoaded: true,
+    props: decorateProps(response.props, {
+      includeUnavailable: options.includeUnavailable,
+      savedVersion,
+    }),
   };
   if (typeof response.saved === 'boolean') {
     envelope.saved = response.saved;

@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>本地开发与验证记录</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f1ea;
+      --panel: #fffdf8;
+      --text: #22201b;
+      --muted: #6e665b;
+      --line: #d8cfc1;
+      --accent: #8f4e1d;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+      background: linear-gradient(180deg, #efe7da 0%, var(--bg) 100%);
+      color: var(--text);
+    }
+
+    main {
+      width: min(920px, calc(100vw - 32px));
+      margin: 32px auto;
+      padding: 28px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 18px 48px rgba(74, 51, 31, 0.08);
+    }
+
+    h1,
+    h2 {
+      margin: 0 0 16px;
+      line-height: 1.2;
+    }
+
+    h1 {
+      font-size: 32px;
+    }
+
+    h2 {
+      margin-top: 28px;
+      font-size: 22px;
+      color: var(--accent);
+    }
+
+    p {
+      margin: 0 0 14px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    ul,
+    ol {
+      margin: 0;
+      padding-left: 22px;
+      line-height: 1.8;
+    }
+
+    li + li {
+      margin-top: 6px;
+    }
+
+    code {
+      padding: 0.1em 0.35em;
+      border-radius: 6px;
+      background: #f1e5d6;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.95em;
+      color: #5c2f0f;
+    }
+
+    section + section {
+      border-top: 1px solid var(--line);
+      padding-top: 24px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>本地开发与验证记录</h1>
+    <p>本文档用于保存原 <code>agent.md</code> 中不适合作为 Copilot 工作区指令的调研、验证与实施说明。</p>
+
+    <section>
+      <h2>本次调研结论</h2>
+      <ul>
+        <li>当前仓库已经验证可以在本地自动编译 VSIX 并安装到本机 VS Code。</li>
+        <li>现有入口命令为 <code>npm run package:vsix</code>、<code>npm run install:vsix</code>、<code>npm run load:local</code>。</li>
+        <li><code>load:local</code> 会先执行 VSIX 打包，再调用本机 VS Code CLI 安装扩展。</li>
+        <li>扩展运行时已经切换为 TypeScript + Windows Script Host + LabVIEW COM，不再要求客户额外安装 Python、pywin32 或 Pillow。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>已完成的实际验证</h2>
+      <ol>
+        <li><code>npm run compile</code> 已成功执行，说明 TypeScript 检查、ESLint 与 esbuild 打包链路正常。</li>
+        <li><code>vsce package</code> 已成功产出 VSIX，最初因为仓库缺少 LICENSE 文件而出现交互确认。</li>
+        <li>通过在 <code>package:vsix</code> 中加入 <code>--skip-license</code>，打包流程已变为非交互。</li>
+        <li><code>npm run load:local</code> 已成功执行，VS Code CLI 返回扩展安装成功。</li>
+        <li>本机扩展列表已能看到 <code>nevstop-lab.labview-vi-support@0.0.1</code>。</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>过程中确认的问题与处理</h2>
+      <ul>
+        <li>初始 VSIX 会把 <code>.venv</code>、<code>.github</code>、<code>prototype/vi</code>、Python 缓存文件一起打进去，导致包体积膨胀到 24.67 MB。</li>
+        <li>现已通过 <code>.vscodeignore</code> 排除无关目录与缓存文件，重新打包后 VSIX 降到 67.02 KB。</li>
+        <li>Windows 下直接调用带空格路径的 <code>code.cmd</code> 会遇到命令解析问题。</li>
+        <li>现已改为由 <code>scripts/install-vsix.js</code> 通过 PowerShell 调用 <code>code.cmd</code>，安装流程已验证通过。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>当前实现要点</h2>
+      <ul>
+        <li><code>package.json</code> 中新增了 <code>package:vsix</code>、<code>install:vsix</code>、<code>load:local</code> 三个脚本。</li>
+        <li><code>scripts/install-vsix.js</code> 会在标准 VS Code 安装路径中查找 <code>code.cmd</code>，并执行 <code>--install-extension &lt;vsix&gt; --force</code>。</li>
+        <li>该安装脚本当前只支持 Windows，这与本扩展依赖 LabVIEW COM 桥接、仅支持 Windows 的前提一致。</li>
+        <li>图像导出已改为 <code>save_vi_panel_image_worker.vbs</code>，属性读写已改为 TS 包装层直接调用 <code>read_vi_props_worker.vbs</code> 与 <code>write_vi_props_worker.vbs</code>。</li>
+        <li>运行时不再依赖 Python 解释器；<code>prototype/scripts/*.py</code> 仅作为保留的原型/研究脚本存在。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>当前约束</h2>
+      <ul>
+        <li>仓库目前仍然没有 LICENSE 文件，因此 VSIX 打包依赖 <code>--skip-license</code>。</li>
+        <li>自动安装依赖本机存在标准位置的 VS Code CLI。</li>
+        <li>扩展仍然只支持 Windows，因为底层依赖 LabVIEW ActiveX/COM 与 WSH。</li>
+        <li>“已安装”已得到验证；若要继续验证运行时激活，需要在 VS Code 中实际打开 <code>.vi</code> 或 <code>.vit</code> 文件触发自定义编辑器。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>建议的后续人工冒烟测试</h2>
+      <ol>
+        <li>执行 <code>npm run load:local</code>。</li>
+        <li>在当前 VS Code 中打开 <code>prototype/vi/2025.vi</code>。</li>
+        <li>确认自定义编辑器是否正常展示前面板、程序框图与属性表。</li>
+        <li>若需要验证写回能力，再在已安装 LabVIEW 的机器上测试属性修改与保存。</li>
+      </ol>
+    </section>
+  </main>
+</body>
+</html>

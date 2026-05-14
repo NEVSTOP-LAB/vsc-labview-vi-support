@@ -4,17 +4,15 @@
 read_vi_props.py
 ================
 
-通过 LabVIEW ActiveX/COM 读取 VI 的全部可访问属性。
+通过 LabVIEW ActiveX/COM 读取一组常用且稳定可访问的 VI 属性。
 
-支持的属性（共 22 项）
+支持的属性（共 12 项）
 ----------------------
-只读 String  : Name, Path, LVVersion
-读写 String  : Description, HistoryText, PrintHeader, PrintFooter, FPTitle
-只读 Boolean : HasChanges, Protected, IsRunning, FPOpen
-读写 Boolean : AllowDebugging, BreakOnError, SuspendWhenCalled, ShowFPOnCall,
-               CloseAfterCall, Scalable, ShowScrollbars, InlineSubVI
-只读 Number  : Revision
-读写 Number  : ReentrantType, Priority
+只读 String  : Name, Path, SavedVersion
+读写 String  : Description, HistoryText
+读写 Boolean : AllowDebugging, ShowFPOnCall, CloseFPAfterCall,
+               IsReentrant, RunOnOpen
+读写 Number  : PreferredExecSystem, ExecPriority
 
 工作方式
 --------
@@ -67,29 +65,18 @@ _PROPS_WORKER_SCRIPT = os.path.join(os.path.dirname(__file__), "read_vi_props_wo
 # 属性元数据：(type, writable, description)
 # ---------------------------------------------------------------------------
 _PROP_META: dict[str, tuple[str, bool, str]] = {
-    "Name":              ("String",  False, "VI 文件名（不含路径）"),
-    "Path":              ("String",  False, "VI 文件完整路径"),
-    "LVVersion":         ("String",  False, "最近保存时的 LabVIEW 版本字符串"),
-    "Description":       ("String",  True,  "VI 描述（属性对话框中的说明文字）"),
-    "HistoryText":       ("String",  True,  "修订历史日志文本"),
-    "PrintHeader":       ("String",  True,  "打印页眉"),
-    "PrintFooter":       ("String",  True,  "打印页脚"),
-    "HasChanges":        ("Boolean", False, "是否有未保存的修改"),
-    "Protected":         ("Boolean", False, "框图是否已加密保护"),
-    "IsRunning":         ("Boolean", False, "当前是否正在运行"),
-    "AllowDebugging":    ("Boolean", True,  "允许调试"),
-    "BreakOnError":      ("Boolean", True,  "出错时暂停执行"),
-    "SuspendWhenCalled": ("Boolean", True,  "被调用时挂起"),
-    "ShowFPOnCall":      ("Boolean", True,  "被调用时显示前面板"),
-    "CloseAfterCall":    ("Boolean", True,  "调用完毕后关闭前面板"),
-    "Scalable":          ("Boolean", True,  "前面板是否可缩放（LV 2009+）"),
-    "ShowScrollbars":    ("Boolean", True,  "显示前面板滚动条"),
-    "InlineSubVI":       ("Boolean", True,  "是否内联子 VI（LV 2010+）"),
-    "Revision":          ("Number",  False, "修订计数器（每次保存 +1）"),
-    "ReentrantType":     ("Number",  True,  "可重入类型：0=不可重入, 1=预分配副本, 2=共享副本"),
-    "Priority":          ("Number",  True,  "执行优先级：0=后台, 1=正常, 2=较高, 3=高, 4=时间关键, 5=子程序"),
-    "FPTitle":           ("String",  True,  "前面板窗口标题"),
-    "FPOpen":            ("Boolean", False, "前面板窗口是否当前打开"),
+    "Name":                ("String",  False, "VI 文件名（不含路径）"),
+    "Path":                ("String",  False, "VI 文件完整路径"),
+    "SavedVersion":        ("String",  False, "从文件头解析的保存版本"),
+    "Description":         ("String",  True,  "VI 描述（属性对话框中的说明文字）"),
+    "HistoryText":         ("String",  True,  "修订历史日志文本"),
+    "AllowDebugging":      ("Boolean", True,  "允许调试"),
+    "ShowFPOnCall":        ("Boolean", True,  "被调用时显示前面板"),
+    "CloseFPAfterCall":    ("Boolean", True,  "调用完毕后关闭前面板"),
+    "IsReentrant":         ("Boolean", True,  "是否允许重入执行"),
+    "RunOnOpen":           ("Boolean", True,  "打开后立即运行（常见于顶层 VI）"),
+    "PreferredExecSystem": ("Number",  True,  "首选执行系统"),
+    "ExecPriority":        ("Number",  True,  "执行优先级（VI Server 枚举值）"),
 }
 
 
@@ -571,6 +558,23 @@ def _run_props_worker(
     return result.get("props", {})
 
 
+def _inject_saved_version(abs_vi_path: str, props: dict[str, dict]) -> dict[str, dict]:
+    saved_version = _format_version(_read_vi_saved_version(abs_vi_path))
+    if not saved_version:
+        return props
+
+    enriched = dict(props)
+    enriched["SavedVersion"] = {
+        "ok": True,
+        "type": "String",
+        "value": saved_version,
+        "error": None,
+        "writable": False,
+        "description": _PROP_META["SavedVersion"][2],
+    }
+    return enriched
+
+
 # ---------------------------------------------------------------------------
 # 公开 API
 # ---------------------------------------------------------------------------
@@ -611,7 +615,7 @@ def read_vi_props(
     installation, report = _resolve_target_installation(
         abs_vi_path, labview_version, labview_bitness
     )
-    all_props = _run_props_worker(installation, report, abs_vi_path)
+    all_props = _inject_saved_version(abs_vi_path, _run_props_worker(installation, report, abs_vi_path))
 
     if props is not None:
         unknown = set(props) - set(_PROP_META)
@@ -625,17 +629,37 @@ def read_vi_props(
 # ---------------------------------------------------------------------------
 # 格式化输出
 # ---------------------------------------------------------------------------
-_REENTRANT_LABELS = {0: "不可重入", 1: "预分配副本", 2: "共享副本"}
-_PRIORITY_LABELS  = {0: "后台", 1: "正常", 2: "较高", 3: "高", 4: "时间关键", 5: "子程序"}
+_PREFERRED_EXEC_SYSTEM_LABELS = {
+    1: "用户界面",
+    2: "标准",
+    3: "仪器 I/O",
+    4: "数据采集",
+    5: "其他 1",
+    6: "其他 2",
+    7: "与调用者相同",
+}
+
+_EXEC_PRIORITY_LABELS = {
+    0: "后台",
+    1: "正常",
+    2: "较高",
+    3: "高",
+    4: "时间关键",
+    5: "子程序",
+}
 
 
 def _annotate_value(prop_name: str, raw_value: str) -> str:
     """为枚举型数值属性追加可读标签。"""
-    if prop_name == "ReentrantType":
-        label = _REENTRANT_LABELS.get(int(raw_value) if raw_value.lstrip("-").isdigit() else -1)
+    if prop_name == "PreferredExecSystem":
+        label = _PREFERRED_EXEC_SYSTEM_LABELS.get(
+            int(raw_value) if raw_value.lstrip("-").isdigit() else -1
+        )
         return f"{raw_value} ({label})" if label else raw_value
-    if prop_name == "Priority":
-        label = _PRIORITY_LABELS.get(int(raw_value) if raw_value.lstrip("-").isdigit() else -1)
+    if prop_name == "ExecPriority":
+        label = _EXEC_PRIORITY_LABELS.get(
+            int(raw_value) if raw_value.lstrip("-").isdigit() else -1
+        )
         return f"{raw_value} ({label})" if label else raw_value
     return raw_value
 
@@ -715,7 +739,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             preferred_version=getattr(args, "labview_version", None),
             preferred_bitness=getattr(args, "labview_bitness", None),
         )
-        all_props = _run_props_worker(installation, report, abs_vi_path)
+        all_props = _inject_saved_version(abs_vi_path, _run_props_worker(installation, report, abs_vi_path))
 
         if prop_list is not None:
             unknown = set(prop_list) - set(_PROP_META)

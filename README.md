@@ -6,17 +6,20 @@
 ## 功能特性
 
 - **`.vi` / `.vit` 自定义编辑器**：在 VS Code 中打开 VI 后会弹出一个
-  WebView，显示前面板 (FP) 与程序框图 (BD) 的图像，并附带一张可编辑的
-  属性表。
+  WebView。默认首次打开仅显示属性表；切到预览后可查看前面板 (FP) 与
+  程序框图 (BD) 图像，并附带一张可编辑的属性表。
 - **视图模式与工具栏**：可在 *预览与属性表* / *仅显示属性表* /
   *仅显示预览* 之间切换；预览区域支持在 *仅前面板* / *仅程序框图* /
   *同时显示* 之间切换。
 - **平移与缩放**：滚轮缩放（10% – 500%，以鼠标位置为锚点）、按住拖动
   平移、双击图像自适应窗口；前面板和程序框图各自维护独立缩放比例。
-- **可编辑属性**：根据属性类型自动选用文本框、文本域、布尔下拉、数字
-  输入框，以及 `ReentrantType` / `Priority` 的枚举下拉。修改通过 VI Server
-  （由扩展内置的 TypeScript + Windows Script Host + LabVIEW COM 驱动）
-  写回 VI 并保存。
+- **可编辑属性**：属性表已收敛为一组更常用、且在 LabVIEW COM 下更稳定的
+  VI 设置，例如 `Description`、`HistoryText`、`AllowDebugging`、
+  `ShowFPOnCall`、`CloseFPAfterCall`、`IsReentrant`、`RunOnOpen`、
+  `PreferredExecSystem` 与 `ExecPriority`。根据属性类型自动选用文本框、
+  文本域、布尔下拉和数字输入控件，并补充从文件头解析出的保存版本。
+  修改通过 VI Server（由扩展内置的 TypeScript + Windows Script Host +
+  LabVIEW COM 驱动）写回 VI 并保存。
 - **MD5 缓存**：FP/BD 图像与属性 JSON 缓存在扩展的全局存储目录中，缓存
   键是源 `.vi` 文件内容的 MD5。再次打开同一份 VI 几乎是瞬时的。
 
@@ -35,8 +38,9 @@ LabVIEW 通信，因此：
 
 - `labview-vi-support.cacheDirectory` — 当前缓存目录。该值由扩展自动维护；
   可在设置界面通过“打开缓存目录 / 清理缓存”动作链接操作。
-- `labview-vi-support.viewMode` — 编辑器默认视图模式。可在用户设置中作为
-  系统级默认值配置，也可在工作区设置中覆盖为当前项目统一使用的模式。
+- `labview-vi-support.viewMode` — 编辑器默认视图模式。当前默认值为
+  `table-only`，可在用户设置中作为系统级默认值配置，也可在工作区设置中
+  覆盖为当前项目统一使用的模式。
 - `labview-vi-support.scriptTimeoutMs` — 每次脚本调用的超时（毫秒）。
 
 ## 写入脚本的当前状态

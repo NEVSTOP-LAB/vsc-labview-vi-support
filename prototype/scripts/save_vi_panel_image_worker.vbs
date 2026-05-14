@@ -3,12 +3,14 @@ Option Explicit
 ' ===========================================================================
 ' save_vi_panel_image_worker.vbs
 ' ===========================================================================
-' 使用 LabVIEW ActiveX/COM 的 PrintVIToHTML 导出前面板或程序框图 PNG。
+' 使用 LabVIEW ActiveX/COM 的 PrintVIToHTML 导出前面板和/或程序框图 PNG。
 '
 ' 命名参数
 '   /viPath             VI 文件完整路径（必填）
-'   /panel              fp | bd（默认 fp）
-'   /outputPath         输出 PNG 路径（必填）
+'   /panel              fp | bd（兼容旧调用；与 /outputPath 配对使用）
+'   /outputPath         输出 PNG 路径（兼容旧调用）
+'   /fpOutputPath       前面板 PNG 输出路径（可选）
+'   /bdOutputPath       程序框图 PNG 输出路径（可选）
 '   /responsePath       响应文件路径（必填）
 '   /timeoutSeconds     连接超时秒数（默认 45）
 '   /targetExe          目标 LabVIEW.exe 路径（可选）
@@ -22,7 +24,9 @@ Option Explicit
 '   connected_version_b64=<Base64-UTF8>
 '   connected_directory_b64=<Base64-UTF8>
 '   attempts=<整数>
-'   output_path_b64=<Base64-UTF8>
+'   output_path_b64=<Base64-UTF8>      (兼容旧调用；优先写 fp，其次写 bd)
+'   fp_output_path_b64=<Base64-UTF8>
+'   bd_output_path_b64=<Base64-UTF8>
 ' ===========================================================================
 
 Const PRINT_FORMAT_COMPLETE = 4
@@ -31,6 +35,8 @@ Const HTML_IMAGE_FORMAT_PNG = 0
 Dim viPath
 Dim panel
 Dim outputPath
+Dim fpOutputPath
+Dim bdOutputPath
 Dim targetExe
 Dim expectedDirectory
 Dim expectedVersion
@@ -41,6 +47,8 @@ Dim retryIntervalMs
 viPath            = GetNamedArg("viPath", "")
 panel             = LCase(GetNamedArg("panel", "fp"))
 outputPath        = GetNamedArg("outputPath", "")
+fpOutputPath      = GetNamedArg("fpOutputPath", "")
+bdOutputPath      = GetNamedArg("bdOutputPath", "")
 targetExe         = GetNamedArg("targetExe", "")
 expectedDirectory = GetNamedArg("expectedDirectory", "")
 expectedVersion   = GetNamedArg("expectedVersion", "")
@@ -56,6 +64,8 @@ Dim reason
 Dim connectedVersion
 Dim connectedDirectory
 Dim exportedOutputPath
+Dim exportedFpOutputPath
+Dim exportedBdOutputPath
 
 Set app              = Nothing
 Set vi               = Nothing
@@ -65,6 +75,8 @@ reason               = ""
 connectedVersion     = ""
 connectedDirectory   = ""
 exportedOutputPath   = ""
+exportedFpOutputPath = ""
+exportedBdOutputPath = ""
 
 On Error Resume Next
 Main
@@ -82,14 +94,25 @@ Sub Main()
     If Len(viPath) = 0 Then
         Err.Raise vbObjectError + 101, , "Missing viPath argument."
     End If
-    If Len(outputPath) = 0 Then
-        Err.Raise vbObjectError + 102, , "Missing outputPath argument."
-    End If
     If Not FileExists(viPath) Then
         Err.Raise vbObjectError + 103, , "VI file not found: " & viPath
     End If
-    If panel <> "fp" And panel <> "bd" Then
+
+    If Len(outputPath) > 0 Then
+        If panel <> "fp" And panel <> "bd" Then
+            Err.Raise vbObjectError + 104, , "panel must be fp or bd when outputPath is used."
+        End If
+        If panel = "bd" Then
+            bdOutputPath = outputPath
+        Else
+            fpOutputPath = outputPath
+        End If
+    ElseIf Len(panel) > 0 And panel <> "fp" And panel <> "bd" Then
         Err.Raise vbObjectError + 104, , "panel must be fp or bd."
+    End If
+
+    If Len(fpOutputPath) = 0 And Len(bdOutputPath) = 0 Then
+        Err.Raise vbObjectError + 102, , "Missing outputPath/fpOutputPath/bdOutputPath argument."
     End If
 
     ConnectLabVIEW
@@ -100,7 +123,12 @@ Sub Main()
         Err.Raise vbObjectError + 105, , "GetVIReference failed: " & Err.Description
     End If
 
-    exportedOutputPath = ExportPanelImage(vi, panel, outputPath)
+    ExportPanelImages vi, fpOutputPath, bdOutputPath
+    If Len(exportedFpOutputPath) > 0 Then
+        exportedOutputPath = exportedFpOutputPath
+    Else
+        exportedOutputPath = exportedBdOutputPath
+    End If
     reason = "Image export succeeded."
 
     WriteResponse True
@@ -109,13 +137,12 @@ Sub Main()
     WScript.Quit 0
 End Sub
 
-Function ExportPanelImage(ByRef viRef, ByVal panelName, ByVal finalOutputPath)
+Sub ExportPanelImages(ByRef viRef, ByVal fpFinalOutputPath, ByVal bdFinalOutputPath)
     Dim fso
     Dim tempRoot
     Dim exportRoot
     Dim htmlPath
     Dim imageDir
-    Dim suffix
     Dim sourcePath
 
     Set fso = CreateObject("Scripting.FileSystemObject")
@@ -134,27 +161,35 @@ Function ExportPanelImage(ByRef viRef, ByVal panelName, ByVal finalOutputPath)
         invokeErr = Err.Description
         CleanupFolder exportRoot
         Err.Raise vbObjectError + 106, , "PrintVIToHTML failed: " & invokeErr
-        Exit Function
+        Exit Sub
     End If
 
-    If panelName = "fp" Then
-        suffix = "p.png"
-    Else
-        suffix = "d.png"
+    If Len(fpFinalOutputPath) > 0 Then
+        sourcePath = FindExportedImage(imageDir, "p.png")
+        If Len(sourcePath) = 0 Then
+            CleanupFolder exportRoot
+            Err.Raise vbObjectError + 107, , "LabVIEW HTML export did not produce *p.png."
+            Exit Sub
+        End If
+        EnsureParentFolder fpFinalOutputPath
+        fso.CopyFile sourcePath, fpFinalOutputPath, True
+        exportedFpOutputPath = fpFinalOutputPath
     End If
 
-    sourcePath = FindExportedImage(imageDir, suffix)
-    If Len(sourcePath) = 0 Then
-        CleanupFolder exportRoot
-        Err.Raise vbObjectError + 107, , "LabVIEW HTML export did not produce *" & suffix & "."
-        Exit Function
+    If Len(bdFinalOutputPath) > 0 Then
+        sourcePath = FindExportedImage(imageDir, "d.png")
+        If Len(sourcePath) = 0 Then
+            CleanupFolder exportRoot
+            Err.Raise vbObjectError + 108, , "LabVIEW HTML export did not produce *d.png."
+            Exit Sub
+        End If
+        EnsureParentFolder bdFinalOutputPath
+        fso.CopyFile sourcePath, bdFinalOutputPath, True
+        exportedBdOutputPath = bdFinalOutputPath
     End If
 
-    EnsureParentFolder finalOutputPath
-    fso.CopyFile sourcePath, finalOutputPath, True
     CleanupFolder exportRoot
-    ExportPanelImage = finalOutputPath
-End Function
+End Sub
 
 Function FindExportedImage(ByVal imageDir, ByVal suffix)
     Dim fso
@@ -245,6 +280,8 @@ Sub WriteResponse(ByVal ok)
     stream.WriteLine "connected_directory_b64=" & EncodeBase64Utf8(connectedDirectory)
     stream.WriteLine "attempts=" & CStr(attempts)
     stream.WriteLine "output_path_b64=" & EncodeBase64Utf8(exportedOutputPath)
+    stream.WriteLine "fp_output_path_b64=" & EncodeBase64Utf8(exportedFpOutputPath)
+    stream.WriteLine "bd_output_path_b64=" & EncodeBase64Utf8(exportedBdOutputPath)
 
     stream.Close
     Set stream = Nothing

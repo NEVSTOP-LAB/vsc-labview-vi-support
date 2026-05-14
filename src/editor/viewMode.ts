@@ -12,7 +12,7 @@ export function isViewMode(value: unknown): value is ViewMode {
 }
 
 export function normalizeViewMode(value: unknown): ViewMode {
-  return isViewMode(value) ? value : 'both';
+  return isViewMode(value) ? value : 'table-only';
 }
 
 export function preferWorkspaceConfigurationTarget(

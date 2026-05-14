@@ -3,7 +3,7 @@ Option Explicit
 ' ===========================================================================
 ' read_vi_props_worker.vbs
 ' ===========================================================================
-' 通过 LabVIEW ActiveX/COM 读取 VI 的全部可访问属性。
+' 通过 LabVIEW ActiveX/COM 读取一组常用且稳定可访问的 VI 属性。
 '
 ' 本脚本由 read_vi_props.py 调度，不应直接运行。
 '
@@ -133,15 +133,12 @@ Sub ReadAllProperties(ByRef stream)
     Dim val
     Dim ok
     Dim errMsg
-    Dim fp
-    Dim fpOk
-    Dim fpErrMsg
 
     ' 全局 On Error Resume Next，逐属性检查 Err.Number
     On Error Resume Next
 
     ' -----------------------------------------------------------------------
-    ' String 属性（只读）
+    ' String 属性
     ' -----------------------------------------------------------------------
 
     ' Name — VI 文件名（不含路径），只读
@@ -156,16 +153,6 @@ Sub ReadAllProperties(ByRef stream)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
     WritePropLine stream, "Path", "String", ok, val, errMsg
 
-    ' LVVersion — 最近一次保存该 VI 的 LabVIEW 版本字符串，只读
-    val = "" : Err.Clear
-    val = CStr(vi.LVVersion)
-    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "LVVersion", "String", ok, val, errMsg
-
-    ' -----------------------------------------------------------------------
-    ' String 属性（可读写）
-    ' -----------------------------------------------------------------------
-
     ' Description — VI 描述，可读写
     val = "" : Err.Clear
     val = CStr(vi.Description)
@@ -178,42 +165,8 @@ Sub ReadAllProperties(ByRef stream)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
     WritePropLine stream, "HistoryText", "String", ok, val, errMsg
 
-    ' PrintHeader — 打印页眉，可读写
-    val = "" : Err.Clear
-    val = CStr(vi.PrintHeader)
-    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "PrintHeader", "String", ok, val, errMsg
-
-    ' PrintFooter — 打印页脚，可读写
-    val = "" : Err.Clear
-    val = CStr(vi.PrintFooter)
-    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "PrintFooter", "String", ok, val, errMsg
-
     ' -----------------------------------------------------------------------
-    ' Boolean 属性（只读）
-    ' -----------------------------------------------------------------------
-
-    ' HasChanges — VI 是否有未保存的修改，只读
-    val = "" : Err.Clear
-    val = CStr(vi.HasChanges)
-    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "HasChanges", "Boolean", ok, val, errMsg
-
-    ' Protected — 框图是否已加密保护，只读
-    val = "" : Err.Clear
-    val = CStr(vi.Protected)
-    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "Protected", "Boolean", ok, val, errMsg
-
-    ' IsRunning — VI 当前是否正在运行，只读
-    val = "" : Err.Clear
-    val = CStr(vi.IsRunning)
-    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "IsRunning", "Boolean", ok, val, errMsg
-
-    ' -----------------------------------------------------------------------
-    ' Boolean 属性（可读写）
+    ' Boolean 属性
     ' -----------------------------------------------------------------------
 
     ' AllowDebugging — 允许调试，可读写
@@ -222,101 +175,45 @@ Sub ReadAllProperties(ByRef stream)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
     WritePropLine stream, "AllowDebugging", "Boolean", ok, val, errMsg
 
-    ' BreakOnError — 出错时暂停，可读写
-    val = "" : Err.Clear
-    val = CStr(vi.BreakOnError)
-    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "BreakOnError", "Boolean", ok, val, errMsg
-
-    ' SuspendWhenCalled — 被调用时挂起，可读写
-    val = "" : Err.Clear
-    val = CStr(vi.SuspendWhenCalled)
-    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "SuspendWhenCalled", "Boolean", ok, val, errMsg
-
     ' ShowFPOnCall — 被调用时显示前面板，可读写
     val = "" : Err.Clear
     val = CStr(vi.ShowFPOnCall)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
     WritePropLine stream, "ShowFPOnCall", "Boolean", ok, val, errMsg
 
-    ' CloseAfterCall — 调用完毕后关闭前面板，可读写
+    ' CloseFPAfterCall — 调用完毕后关闭前面板，可读写
     val = "" : Err.Clear
-    val = CStr(vi.CloseAfterCall)
+    val = CStr(vi.CloseFPAfterCall)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "CloseAfterCall", "Boolean", ok, val, errMsg
+    WritePropLine stream, "CloseFPAfterCall", "Boolean", ok, val, errMsg
 
-    ' Scalable — 前面板是否可缩放，可读写
+    ' IsReentrant — 是否可重入，可读写
     val = "" : Err.Clear
-    val = CStr(vi.Scalable)
+    val = CStr(vi.IsReentrant)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "Scalable", "Boolean", ok, val, errMsg
+    WritePropLine stream, "IsReentrant", "Boolean", ok, val, errMsg
 
-    ' ShowScrollbars — 显示前面板滚动条，可读写
+    ' RunOnOpen — 打开后自动运行，可读写
     val = "" : Err.Clear
-    val = CStr(vi.ShowScrollbars)
+    val = CStr(vi.RunOnOpen)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "ShowScrollbars", "Boolean", ok, val, errMsg
-
-    ' InlineSubVI — 是否内联（LV 2010+），可读写
-    val = "" : Err.Clear
-    val = CStr(vi.InlineSubVI)
-    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "InlineSubVI", "Boolean", ok, val, errMsg
+    WritePropLine stream, "RunOnOpen", "Boolean", ok, val, errMsg
 
     ' -----------------------------------------------------------------------
-    ' Number 属性（只读）
+    ' Number 属性
     ' -----------------------------------------------------------------------
 
-    ' Revision — VI 修订计数器，只读
+    ' PreferredExecSystem — 首选执行系统，可读写
     val = "" : Err.Clear
-    val = CStr(vi.Revision)
+    val = CStr(vi.PreferredExecSystem)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "Revision", "Number", ok, val, errMsg
+    WritePropLine stream, "PreferredExecSystem", "Number", ok, val, errMsg
 
-    ' -----------------------------------------------------------------------
-    ' Number 属性（可读写）
-    ' -----------------------------------------------------------------------
-
-    ' ReentrantType — 可重入类型：0=不可重入, 1=预分配副本, 2=共享副本；可读写
+    ' ExecPriority — 执行优先级，可读写
     val = "" : Err.Clear
-    val = CStr(vi.ReentrantType)
+    val = CStr(vi.ExecPriority)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "ReentrantType", "Number", ok, val, errMsg
-
-    ' Priority — 执行优先级：0=后台, 1=正常, 2=较高, 3=高, 4=时间关键, 5=子程序；可读写
-    val = "" : Err.Clear
-    val = CStr(vi.Priority)
-    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "Priority", "Number", ok, val, errMsg
-
-    ' -----------------------------------------------------------------------
-    ' FP (Front Panel) 子对象属性
-    ' -----------------------------------------------------------------------
-    Set fp = Nothing : Err.Clear
-    Set fp = vi.FP
-    fpOk     = (Err.Number = 0)
-    fpErrMsg = Err.Description
-    Err.Clear
-
-    If fpOk Then
-        ' FPTitle — 前面板窗口标题，可读写
-        val = "" : Err.Clear
-        val = CStr(fp.Title)
-        ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-        WritePropLine stream, "FPTitle", "String", ok, val, errMsg
-
-        ' FPOpen — 前面板窗口是否当前打开，只读
-        val = "" : Err.Clear
-        val = CStr(fp.Open)
-        ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-        WritePropLine stream, "FPOpen", "Boolean", ok, val, errMsg
-
-        Set fp = Nothing
-    Else
-        WritePropLine stream, "FPTitle", "String", False, "", "FP object inaccessible: " & fpErrMsg
-        WritePropLine stream, "FPOpen",  "Boolean", False, "", "FP object inaccessible: " & fpErrMsg
-    End If
+    WritePropLine stream, "ExecPriority", "Number", ok, val, errMsg
 
     On Error GoTo 0
 End Sub

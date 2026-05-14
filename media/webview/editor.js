@@ -9,6 +9,7 @@
 // 出站消息（webview → host）：
 //   { type: 'ready' }
 //   { type: 'reload' }
+//   { type: 'loadDynamicProps' }
 //   { type: 'setViewMode', viewMode }
 //   { type: 'saveProps', updates: { 属性名: 值, ... } }
 
@@ -20,10 +21,12 @@
   // -------------------------------------------------------------------------
   // State
   // -------------------------------------------------------------------------
-  /** @type {Record<string, {original: string|null, current: string, type: string, writable: boolean}>} */
+  /** @type {Record<string, {original: string|null, current: string, type: string, writable: boolean, editing?: boolean}>} */
   const propRows = {};
-  let viewMode = 'both';         // 'both' | 'table-only' | 'preview-only'
+  let viewMode = 'table-only';   // 'both' | 'table-only' | 'preview-only'
   let previewMode = 'both';      // 'fp' | 'bd' | 'both'
+  let currentPropsEnvelope = null;
+  let currentLoadingState = { fp: false, bd: false, props: false };
   /** @type {Record<'fp'|'bd', { scale: number, x: number, y: number, naturalW: number, naturalH: number }>} */
   const viewState = {
     fp: { scale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0 },
@@ -38,12 +41,16 @@
 
   // Enum metadata for known number-typed properties (mirrors read_vi_props.py).
   const NUMBER_ENUMS = {
-    ReentrantType: [
-      { value: 0, label: '0 (不可重入)' },
-      { value: 1, label: '1 (预分配副本)' },
-      { value: 2, label: '2 (共享副本)' },
+    PreferredExecSystem: [
+      { value: 1, label: '1 (用户界面)' },
+      { value: 2, label: '2 (标准)' },
+      { value: 3, label: '3 (仪器 I/O)' },
+      { value: 4, label: '4 (数据采集)' },
+      { value: 5, label: '5 (其他 1)' },
+      { value: 6, label: '6 (其他 2)' },
+      { value: 7, label: '7 (与调用者相同)' },
     ],
-    Priority: [
+    ExecPriority: [
       { value: 0, label: '0 (后台)' },
       { value: 1, label: '1 (正常)' },
       { value: 2, label: '2 (较高)' },
@@ -51,6 +58,16 @@
       { value: 4, label: '4 (时间关键)' },
       { value: 5, label: '5 (子程序)' },
     ],
+  };
+  const DEFAULT_GROUP_LABELS = {
+    identity: '基础信息',
+    execution: '执行设置',
+    panel: '前面板行为',
+    other: '其他属性',
+  };
+  const DEFAULT_SOURCE_DESCRIPTIONS = {
+    static: '静态属性：可直接离线读取，不需要启动 LabVIEW。',
+    dynamic: '动态属性：需要通过 LabVIEW VI Server 读取，按需加载时可能触发 LabVIEW 窗口。',
   };
 
   // -------------------------------------------------------------------------
@@ -61,8 +78,10 @@
   const btnFp     = $('#btn-fp');
   const btnBd     = $('#btn-bd');
   const btnBoth   = $('#btn-both');
+  const btnLoadDynamic = $('#btn-load-dynamic');
   const btnSave   = $('#btn-save');
   const btnReload = $('#btn-reload');
+  const statusEl  = $('#status');
   const previewControls = $('#preview-controls');
   const tableControls = $('#table-controls');
   const errorsEl  = $('#errors');
@@ -71,6 +90,12 @@
   const tableArea = $('#table-area');
   const imageArea = $('#image-area');
   const splitter  = $('#main-splitter');
+  const sourceTooltip = document.createElement('div');
+  sourceTooltip.id = 'prop-source-tooltip';
+  sourceTooltip.hidden = true;
+  sourceTooltip.setAttribute('role', 'tooltip');
+  document.body.appendChild(sourceTooltip);
+  let activeTooltipTarget = null;
 
   const panes = {
     fp: document.querySelector('.image-pane[data-pane="fp"]'),
@@ -111,6 +136,8 @@
   });
 
   function applyState(state) {
+    currentPropsEnvelope = state.props || null;
+    currentLoadingState = state.loading || { fp: false, bd: false, props: false };
     if (isKnownViewMode(state.viewMode)) {
       setViewMode(state.viewMode, { persist: false });
     }
@@ -126,6 +153,7 @@
     if (Array.isArray(state.errors) && state.errors.length > 0) {
       state.errors.forEach(appendError);
     }
+    updateDynamicUi();
     updateSaveButton();
   }
 
@@ -139,6 +167,58 @@
   function clearErrors() {
     errorsEl.innerHTML = '';
     errorsEl.hidden = true;
+  }
+
+  function hideSourceTooltip(target) {
+    if (target && activeTooltipTarget !== target) {
+      return;
+    }
+    activeTooltipTarget = null;
+    sourceTooltip.hidden = true;
+    sourceTooltip.classList.remove('visible');
+    sourceTooltip.textContent = '';
+    sourceTooltip.removeAttribute('data-placement');
+    sourceTooltip.style.left = '';
+    sourceTooltip.style.top = '';
+  }
+
+  function positionSourceTooltip(target) {
+    if (!target || sourceTooltip.hidden) {
+      return;
+    }
+    const tooltipGap = 10;
+    const viewportMargin = 12;
+    const targetRect = target.getBoundingClientRect();
+    const tooltipRect = sourceTooltip.getBoundingClientRect();
+
+    let placement = 'top';
+    let top = targetRect.top - tooltipRect.height - tooltipGap;
+    if (top < viewportMargin) {
+      placement = 'bottom';
+      top = targetRect.bottom + tooltipGap;
+    }
+    if (top + tooltipRect.height > window.innerHeight - viewportMargin) {
+      top = Math.max(viewportMargin, window.innerHeight - tooltipRect.height - viewportMargin);
+    }
+
+    let left = targetRect.left + (targetRect.width - tooltipRect.width) / 2;
+    left = Math.max(viewportMargin, Math.min(left, window.innerWidth - tooltipRect.width - viewportMargin));
+
+    sourceTooltip.dataset.placement = placement;
+    sourceTooltip.style.left = Math.round(left) + 'px';
+    sourceTooltip.style.top = Math.round(top) + 'px';
+  }
+
+  function showSourceTooltip(target) {
+    const tooltip = target && target.dataset ? target.dataset.tooltip : '';
+    if (!tooltip) {
+      return;
+    }
+    activeTooltipTarget = target;
+    sourceTooltip.textContent = tooltip;
+    sourceTooltip.hidden = false;
+    sourceTooltip.classList.add('visible');
+    positionSourceTooltip(target);
   }
 
   function clampImageAreaHeight(totalHeight, desiredHeight) {
@@ -326,8 +406,15 @@
   attachPanZoom('fp');
   attachPanZoom('bd');
   window.addEventListener('resize', () => {
+    if (activeTooltipTarget) {
+      positionSourceTooltip(activeTooltipTarget);
+    }
     refreshLayout();
   });
+
+  tableArea.addEventListener('scroll', () => {
+    hideSourceTooltip();
+  }, { passive: true });
 
   splitter.addEventListener('pointerdown', (event) => {
     if (event.button !== 0 || !isPreviewVisible() || !isTableVisible()) {
@@ -390,6 +477,50 @@
     const tableVisible = isTableVisible();
     previewControls.classList.toggle('hidden', !previewVisible);
     tableControls.classList.toggle('hidden', !tableVisible && !hasDirtyChanges());
+    updateDynamicUi();
+  }
+
+  function hasDynamicPropsEnvelope() {
+    const props = currentPropsEnvelope && currentPropsEnvelope.props;
+    return !!props && Object.values(props).some((entry) => entry && entry.source === 'dynamic');
+  }
+
+  function updateDynamicUi() {
+    const loading = !!(currentLoadingState && currentLoadingState.props);
+    const hasDynamicProps = hasDynamicPropsEnvelope();
+    const dynamicLoaded = !!(currentPropsEnvelope && currentPropsEnvelope.dynamicPropsLoaded === true);
+    const showLoadButton = isTableVisible() && hasDynamicProps && !dynamicLoaded;
+
+    btnLoadDynamic.classList.toggle('hidden', !showLoadButton);
+    btnLoadDynamic.disabled = !showLoadButton || loading;
+    btnLoadDynamic.textContent = loading ? '读取中…' : '读取动态属性';
+
+    if (!isTableVisible() || !hasDynamicProps) {
+      statusEl.hidden = true;
+      statusEl.textContent = '';
+      statusEl.classList.remove('status-info', 'status-loading');
+      return;
+    }
+
+    if (loading) {
+      statusEl.hidden = false;
+      statusEl.textContent = '正在读取动态属性…';
+      statusEl.classList.add('status-loading');
+      statusEl.classList.remove('status-info');
+      return;
+    }
+
+    if (!dynamicLoaded) {
+      statusEl.hidden = false;
+      statusEl.textContent = '当前仅显示静态属性。点击“读取动态属性”后将通过 LabVIEW 读取其余属性，可编辑项也会在读取后启用。';
+      statusEl.classList.add('status-info');
+      statusEl.classList.remove('status-loading');
+      return;
+    }
+
+    statusEl.hidden = true;
+    statusEl.textContent = '';
+    statusEl.classList.remove('status-info', 'status-loading');
   }
 
   function applyPreviewMode() {
@@ -443,11 +574,19 @@
   });
 
   btnReload.addEventListener('click', () => {
+    hideSourceTooltip();
     clearErrors();
     vscode.postMessage({ type: 'reload' });
   });
 
+  btnLoadDynamic.addEventListener('click', () => {
+    hideSourceTooltip();
+    clearErrors();
+    vscode.postMessage({ type: 'loadDynamicProps' });
+  });
+
   btnSave.addEventListener('click', () => {
+    hideSourceTooltip();
     const updates = collectUpdates();
     if (Object.keys(updates).length === 0) { return; }
     clearErrors();
@@ -458,8 +597,284 @@
   // -------------------------------------------------------------------------
   // Property table
   // -------------------------------------------------------------------------
+  function collectPropGroups(props) {
+    const groups = [];
+    const seen = new Map();
+
+    for (const name of Object.keys(props)) {
+      const entry = props[name] || {};
+      const key = typeof entry.group === 'string' && entry.group ? entry.group : 'other';
+      let bucket = seen.get(key);
+      if (!bucket) {
+        bucket = {
+          key,
+          label: (typeof entry.groupLabel === 'string' && entry.groupLabel)
+            || DEFAULT_GROUP_LABELS[key]
+            || DEFAULT_GROUP_LABELS.other,
+          names: [],
+        };
+        seen.set(key, bucket);
+        groups.push(bucket);
+      }
+      bucket.names.push(name);
+    }
+
+    return groups;
+  }
+
+  function appendGroupRow(label) {
+    const tr = document.createElement('tr');
+    tr.className = 'group-row';
+    const td = document.createElement('td');
+    td.colSpan = 5;
+    td.textContent = label;
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  }
+
+  function createSourceBadge(entry) {
+    if (!entry || !entry.source) {
+      return null;
+    }
+    const span = document.createElement('span');
+    span.className = 'prop-source-badge prop-source-badge-' + entry.source;
+    span.textContent = entry.sourceLabel || (entry.source === 'static' ? '静态' : '动态');
+    const tooltip = entry.sourceDescription
+      || DEFAULT_SOURCE_DESCRIPTIONS[entry.source]
+      || '';
+    if (tooltip) {
+      span.dataset.tooltip = tooltip;
+      span.setAttribute('aria-label', tooltip);
+      span.tabIndex = 0;
+      span.addEventListener('mouseenter', () => showSourceTooltip(span));
+      span.addEventListener('mouseleave', () => hideSourceTooltip(span));
+      span.addEventListener('focus', () => showSourceTooltip(span));
+      span.addEventListener('blur', () => hideSourceTooltip(span));
+    }
+    return span;
+  }
+
+  function createReadonlyAccessBadge() {
+    const span = document.createElement('span');
+    span.className = 'access-badge access-badge-readonly';
+    span.title = '只读属性';
+    span.setAttribute('aria-label', '只读属性');
+    span.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.75 7V5.75a3.25 3.25 0 1 1 6.5 0V7h.5A1.75 1.75 0 0 1 13.5 8.75v4.5A1.75 1.75 0 0 1 11.75 15h-7.5A1.75 1.75 0 0 1 2.5 13.25v-4.5A1.75 1.75 0 0 1 4.25 7h.5Zm5 0V5.75a1.75 1.75 0 1 0-3.5 0V7h3.5Zm-5.5 1.5a.25.25 0 0 0-.25.25v4.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-4.5a.25.25 0 0 0-.25-.25h-7.5Z"/></svg>';
+    return span;
+  }
+
+  function createDeferredAccessBadge(writable) {
+    const span = document.createElement('span');
+    span.className = 'access-badge access-badge-deferred';
+    span.title = writable
+      ? '动态属性尚未读取；读取后可编辑'
+      : '动态属性尚未读取';
+    span.setAttribute('aria-label', span.title);
+    span.textContent = '…';
+    return span;
+  }
+
+  function createWritableAccessButton(editing, onToggle) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'access-badge access-badge-writable access-badge-button';
+    if (editing) {
+      button.classList.add('access-badge-active');
+      button.title = '可编辑属性，点击完成编辑';
+      button.setAttribute('aria-label', '可编辑属性，点击完成编辑');
+      button.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0l-3.25-3.25a.75.75 0 0 1 1.06-1.06L7 9.94l5.72-5.72a.75.75 0 0 1 1.06 0Z"/></svg>';
+    } else {
+      button.title = '可编辑属性，点击开始编辑';
+      button.setAttribute('aria-label', '可编辑属性，点击开始编辑');
+      button.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.8 8.8a1.75 1.75 0 0 1-.82.452l-3.057.68a.75.75 0 0 1-.895-.895l.68-3.057a1.75 1.75 0 0 1 .452-.82l8.8-8.8Zm1.414 1.06a.25.25 0 0 0-.354 0l-.72.72 1.44 1.44.72-.72a.25.25 0 0 0 0-.354l-1.086-1.086ZM11.732 5.707l-1.44-1.44-7.1 7.1a.25.25 0 0 0-.064.117l-.391 1.758 1.758-.391a.25.25 0 0 0 .117-.064l7.1-7.1Z"/></svg>';
+    }
+    button.addEventListener('click', onToggle);
+    return button;
+  }
+
+  function formatPropType(type) {
+    switch (type) {
+      case 'String':
+        return { label: '字符串', alias: 'String' };
+      case 'Boolean':
+        return { label: '布尔值', alias: 'Boolean' };
+      case 'Number':
+        return { label: '数值', alias: 'Number' };
+      default:
+        return { label: String(type || ''), alias: '' };
+    }
+  }
+
+  function appendTypeCell(td, type) {
+    const formatted = formatPropType(type);
+    const label = document.createElement('div');
+    label.className = 'type-label';
+    label.textContent = formatted.label;
+    td.appendChild(label);
+
+    if (formatted.alias && formatted.alias !== formatted.label) {
+      const alias = document.createElement('div');
+      alias.className = 'type-alias';
+      alias.textContent = formatted.alias;
+      td.appendChild(alias);
+    }
+  }
+
+  function normalizeEditableValue(name, type, value) {
+    const text = value == null ? '' : String(value);
+    if (type === 'Boolean') {
+      return (text === 'True' || text === '1' || text === '-1') ? 'True' : 'False';
+    }
+    if (type === 'Number' && NUMBER_ENUMS[name]) {
+      return text.trim().split(/\s+/)[0] || '';
+    }
+    return text;
+  }
+
+  function formatValueForDisplay(name, type, value) {
+    if (type === 'Boolean') {
+      return value === 'True' ? '是 (True)' : '否 (False)';
+    }
+    if (type === 'Number' && NUMBER_ENUMS[name]) {
+      const option = NUMBER_ENUMS[name].find((item) => String(item.value) === String(value));
+      return option ? option.label : String(value || '');
+    }
+    return String(value || '');
+  }
+
+  function syncDirtyState(td, name) {
+    const slot = propRows[name];
+    const tr = td.parentElement;
+    if (!slot || !tr) { return; }
+    tr.classList.toggle('dirty', slot.current !== slot.original);
+  }
+
+  function renderAccessCell(td, name, tdVal, entry) {
+    td.innerHTML = '';
+    if (entry && entry.loaded === false) {
+      td.appendChild(createDeferredAccessBadge(!!entry.writable));
+      return;
+    }
+    const slot = propRows[name];
+    if (!slot || !slot.writable) {
+      td.appendChild(createReadonlyAccessBadge());
+      return;
+    }
+    td.appendChild(createWritableAccessButton(!!slot.editing, () => {
+      slot.editing = !slot.editing;
+      rerenderEditableRow(td, tdVal, name, entry);
+    }));
+  }
+
+  function buildEditorControl(host, name, type, value, onChange) {
+    if (type === 'Boolean') {
+      const select = document.createElement('select');
+      [['True', '是 (True)'], ['False', '否 (False)']].forEach(([val, label]) => {
+        const opt = document.createElement('option');
+        opt.value = val;
+        opt.textContent = label;
+        select.appendChild(opt);
+      });
+      select.value = value;
+      select.addEventListener('change', () => onChange(select.value));
+      host.appendChild(select);
+      return select;
+    }
+    if (type === 'Number' && NUMBER_ENUMS[name]) {
+      const select = document.createElement('select');
+      NUMBER_ENUMS[name].forEach((opt) => {
+        const o = document.createElement('option');
+        o.value = String(opt.value);
+        o.textContent = opt.label;
+        select.appendChild(o);
+      });
+      select.value = value;
+      select.addEventListener('change', () => onChange(select.value));
+      host.appendChild(select);
+      return select;
+    }
+    if (type === 'Number') {
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.value = value;
+      input.addEventListener('input', () => onChange(input.value));
+      host.appendChild(input);
+      return input;
+    }
+    if (type === 'String' && (name === 'Description' || name === 'HistoryText')) {
+      const ta = document.createElement('textarea');
+      ta.value = value;
+      ta.addEventListener('input', () => onChange(ta.value));
+      host.appendChild(ta);
+      return ta;
+    }
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = value;
+    input.addEventListener('input', () => onChange(input.value));
+    host.appendChild(input);
+    return input;
+  }
+
+  function renderEditableValueCell(td, name) {
+    const slot = propRows[name];
+    if (!slot) { return; }
+
+    td.innerHTML = '';
+
+    if (slot.editing) {
+      const focusTarget = buildEditorControl(td, name, slot.type, slot.current, (raw) => {
+        slot.current = raw;
+        syncDirtyState(td, name);
+        updateSaveButton();
+      });
+      syncDirtyState(td, name);
+      updateSaveButton();
+      if (focusTarget && typeof focusTarget.focus === 'function') {
+        focusTarget.focus();
+      }
+      return;
+    }
+
+    const display = document.createElement('div');
+    display.className = 'value-display';
+    const displayValue = formatValueForDisplay(name, slot.type, slot.current);
+    if (displayValue) {
+      display.textContent = displayValue;
+    } else {
+      display.textContent = '(空)';
+      display.classList.add('value-display-empty');
+    }
+    td.appendChild(display);
+    syncDirtyState(td, name);
+  }
+
+  function rerenderEditableRow(tdRw, tdVal, name, entry) {
+    if (!(tdVal instanceof HTMLElement)) {
+      return;
+    }
+    renderAccessCell(tdRw, name, tdVal, entry);
+    renderEditableValueCell(tdVal, name);
+  }
+
+  function renderDeferredValueCell(td, entry) {
+    td.innerHTML = '';
+    const display = document.createElement('div');
+    display.className = 'value-display value-display-empty';
+    display.textContent = '按需读取';
+    td.appendChild(display);
+
+    const hint = document.createElement('div');
+    hint.className = 'value-hint';
+    hint.textContent = entry && entry.writable
+      ? '读取动态属性后可查看并编辑'
+      : '读取动态属性后显示';
+    td.appendChild(hint);
+  }
+
   function renderTable(props) {
     // Reset row tracking; rebuild from scratch each refresh.
+    hideSourceTooltip();
     Object.keys(propRows).forEach((k) => delete propRows[k]);
     tbody.innerHTML = '';
 
@@ -469,111 +884,76 @@
       return;
     }
 
-    for (const name of names) {
-      const entry = props[name];
-      const tr = document.createElement('tr');
-      tr.dataset.prop = name;
-      const writable = !!entry.writable;
-      if (!writable) { tr.classList.add('row-readonly'); }
+    for (const group of collectPropGroups(props)) {
+      appendGroupRow(group.label);
 
-      const tdName = document.createElement('td'); tdName.textContent = name;
-      const tdType = document.createElement('td'); tdType.textContent = entry.type || '';
-      const tdRw   = document.createElement('td'); tdRw.textContent   = writable ? '读写' : '只读';
-      const tdVal  = document.createElement('td');
-      const tdDesc = document.createElement('td'); tdDesc.textContent = entry.description || '';
+      for (const name of group.names) {
+        const entry = props[name];
+        const tr = document.createElement('tr');
+        tr.dataset.prop = name;
+        const writable = !!entry.writable;
+        if (!writable) { tr.classList.add('row-readonly'); }
 
-      if (!entry.ok) {
-        tdVal.textContent = '[不可用] ' + (entry.error || '');
-        tdVal.style.opacity = '0.6';
-      } else {
-        const value = entry.value == null ? '' : String(entry.value);
-        if (writable) {
-          buildEditor(tdVal, name, entry.type, value);
-          propRows[name] = {
-            original: value,
-            current: value,
-            type: entry.type,
-            writable: true,
-          };
-        } else {
-          tdVal.textContent = value;
+        const tdName = document.createElement('td');
+        const nameHeader = document.createElement('div');
+        nameHeader.className = 'prop-name-header';
+        const label = document.createElement('div');
+        label.className = 'prop-name-label';
+        label.textContent = entry.displayName || name;
+        nameHeader.appendChild(label);
+        const sourceBadge = createSourceBadge(entry);
+        if (sourceBadge) {
+          nameHeader.appendChild(sourceBadge);
         }
-      }
+        tdName.appendChild(nameHeader);
+        if (entry.displayName && entry.displayName !== name) {
+          const alias = document.createElement('div');
+          alias.className = 'prop-name-alias';
+          alias.textContent = name;
+          tdName.appendChild(alias);
+        }
 
-      tr.appendChild(tdName);
-      tr.appendChild(tdType);
-      tr.appendChild(tdRw);
-      tr.appendChild(tdVal);
-      tr.appendChild(tdDesc);
-      tbody.appendChild(tr);
+        const tdType = document.createElement('td'); appendTypeCell(tdType, entry.type);
+        const tdRw   = document.createElement('td');
+        const tdVal  = document.createElement('td');
+        const tdDesc = document.createElement('td'); tdDesc.textContent = entry.description || '';
+
+        if (entry.loaded === false) {
+          renderAccessCell(tdRw, name, tdVal, entry);
+          renderDeferredValueCell(tdVal, entry);
+        } else if (!entry.ok) {
+          tdVal.textContent = '[不可用] ' + (entry.error || '');
+          tdVal.style.opacity = '0.6';
+        } else {
+          const value = entry.value == null ? '' : String(entry.value);
+          if (writable) {
+            const normalizedValue = normalizeEditableValue(name, entry.type, value);
+            propRows[name] = {
+              original: normalizedValue,
+              current: normalizedValue,
+              type: entry.type,
+              writable: true,
+              editing: false,
+            };
+            rerenderEditableRow(tdRw, tdVal, name, entry);
+          } else {
+            renderAccessCell(tdRw, name, tdVal, entry);
+            const display = document.createElement('div');
+            display.className = 'value-display' + (value ? '' : ' value-display-empty');
+            display.textContent = value || '(空)';
+            tdVal.appendChild(display);
+          }
+        }
+
+        tr.appendChild(tdName);
+        tr.appendChild(tdType);
+        tr.appendChild(tdRw);
+        tr.appendChild(tdVal);
+        tr.appendChild(tdDesc);
+        tbody.appendChild(tr);
+      }
     }
     updateSaveButton();
-  }
-
-  function buildEditor(td, name, type, value) {
-    const onChange = (raw) => {
-      const slot = propRows[name];
-      if (!slot) { return; }
-      slot.current = raw;
-      const tr = td.parentElement;
-      if (tr) {
-        tr.classList.toggle('dirty', raw !== slot.original);
-      }
-      updateSaveButton();
-    };
-
-    if (type === 'Boolean') {
-      const select = document.createElement('select');
-      // 显示中文，但 value 仍用 'True' / 'False'，便于后续序列化时与 VBScript
-      // 输出（"True" / "False"）保持一致。
-      [['True', '是 (True)'], ['False', '否 (False)']].forEach(([val, label]) => {
-        const opt = document.createElement('option');
-        opt.value = val;
-        opt.textContent = label;
-        select.appendChild(opt);
-      });
-      // 规范化输入值：VBScript 输出 "True"/"False"；同时容忍 -1/0/1。
-      const normalized = (value === 'True' || value === '1' || value === '-1') ? 'True' : 'False';
-      select.value = normalized;
-      select.addEventListener('change', () => onChange(select.value));
-      td.appendChild(select);
-      // 用规范化后的值填回原始/当前态，确保脏检查可靠。
-      const slot = propRows[name];
-      if (slot) { slot.original = normalized; slot.current = normalized; }
-    } else if (type === 'Number' && NUMBER_ENUMS[name]) {
-      const select = document.createElement('select');
-      NUMBER_ENUMS[name].forEach((opt) => {
-        const o = document.createElement('option');
-        o.value = String(opt.value);
-        o.textContent = opt.label;
-        select.appendChild(o);
-      });
-      // Tolerate annotated values like "1 (预分配副本)".
-      const head = String(value).trim().split(/\s+/)[0];
-      select.value = head;
-      select.addEventListener('change', () => onChange(select.value));
-      td.appendChild(select);
-      const slot = propRows[name];
-      if (slot) { slot.original = head; slot.current = head; }
-    } else if (type === 'Number') {
-      const input = document.createElement('input');
-      input.type = 'number';
-      input.value = value;
-      input.addEventListener('input', () => onChange(input.value));
-      td.appendChild(input);
-    } else if (type === 'String' && (name === 'Description' || name === 'HistoryText'
-                                  || name === 'PrintHeader' || name === 'PrintFooter')) {
-      const ta = document.createElement('textarea');
-      ta.value = value;
-      ta.addEventListener('input', () => onChange(ta.value));
-      td.appendChild(ta);
-    } else {
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.value = value;
-      input.addEventListener('input', () => onChange(input.value));
-      td.appendChild(input);
-    }
   }
 
   function collectUpdates() {

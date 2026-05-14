@@ -7,12 +7,12 @@ import {
 } from '../../editor/viewMode';
 
 suite('viewMode', () => {
-  test('normalizeViewMode falls back to both for invalid values', () => {
+  test('normalizeViewMode falls back to table-only for invalid values', () => {
     assert.strictEqual(normalizeViewMode('both'), 'both');
     assert.strictEqual(normalizeViewMode('table-only'), 'table-only');
     assert.strictEqual(normalizeViewMode('preview-only'), 'preview-only');
-    assert.strictEqual(normalizeViewMode('preview'), 'both');
-    assert.strictEqual(normalizeViewMode(undefined), 'both');
+    assert.strictEqual(normalizeViewMode('preview'), 'table-only');
+    assert.strictEqual(normalizeViewMode(undefined), 'table-only');
   });
 
   test('isViewMode accepts only supported values', () => {
