@@ -4,3 +4,7 @@ node_modules/
 *.vsix
 .vscode-test/
 images/icon.png
+prototype/scripts/__pycache__/
+prototype/vi/*.front-panel.png
+prototype/vi/*.block-diagram.png
+prototype/vi/*.icon.png
