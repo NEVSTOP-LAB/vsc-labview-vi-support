@@ -1,22 +1,20 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { ViCache, type CacheEntry } from '../cache/viCache';
 import {
+  exportViPanelImage,
+  type LabVIEWRuntimeOptions,
+  readViProps,
+  writeViProps,
+} from '../scripts/labviewRuntime';
+import {
   parseCachedPropsJson,
-  parsePropsJson,
   toCachedPropsJson,
   type PropsJsonEnvelope,
 } from '../scripts/propsParser';
-import {
-  PythonScriptError,
-  runPythonScriptOrFail,
-  type RunPythonOptions,
-} from '../scripts/pythonRunner';
-import { resolvePythonExecutableForWorkspace } from '../scripts/pythonPathResolver';
 import { resolveScriptPaths, type ScriptPaths } from '../scripts/scriptPaths';
 
 /**
@@ -74,7 +72,7 @@ export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViD
       webviewPanel,
       this.cache,
       this.scripts,
-      this.getPythonOptions(document.uri),
+      this.getRuntimeOptions(),
     );
 
     webviewPanel.webview.onDidReceiveMessage((msg) => {
@@ -86,16 +84,10 @@ export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViD
     await session.initialize();
   }
 
-  private getPythonOptions(documentUri: vscode.Uri): RunPythonOptions {
+  private getRuntimeOptions(): LabVIEWRuntimeOptions {
     const cfg = vscode.workspace.getConfiguration('labview-vi-support');
-    const customExe = cfg.get<string>('pythonPath');
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(documentUri);
-    const timeout  = cfg.get<number>('scriptTimeoutMs');
+    const timeout = cfg.get<number>('scriptTimeoutMs');
     return {
-      pythonExecutable: resolvePythonExecutableForWorkspace({
-        configuredPythonPath: customExe,
-        workspaceFolderPath: workspaceFolder?.uri.fsPath,
-      }),
       timeoutMs: typeof timeout === 'number' && timeout > 0 ? timeout : undefined,
     };
   }
@@ -162,7 +154,7 @@ class ViEditorSession {
     private readonly panel: vscode.WebviewPanel,
     private readonly cache: ViCache,
     private readonly scripts: ScriptPaths,
-    private readonly pythonOptions: RunPythonOptions,
+    private readonly runtimeOptions: LabVIEWRuntimeOptions,
   ) {}
 
   public dispose(): void {
@@ -294,75 +286,42 @@ class ViEditorSession {
   private async exportPanel(entry: CacheEntry, panel: 'fp' | 'bd'): Promise<void> {
     const outPath = panel === 'fp' ? entry.artifacts.fpImage : entry.artifacts.bdImage;
     try {
-      await runPythonScriptOrFail(
-        this.scripts.savePanelImage,
-        [
-          this.document.uri.fsPath,
-          '--panel', panel,
-          '--output', outPath,
-        ],
-        this.pythonOptions,
-      );
+      await exportViPanelImage(this.document.uri.fsPath, panel, outPath, this.scripts, this.runtimeOptions);
     } catch (err) {
-      const detail = err instanceof PythonScriptError ? err.message : String(err);
+      const detail = err instanceof Error ? err.message : String(err);
       await this.postError(`${panel === 'fp' ? '前面板' : '程序框图'}导出失败: ${detail}`);
     }
   }
 
   private async fetchProps(entry: CacheEntry): Promise<void> {
     try {
-      const result = await runPythonScriptOrFail(
-        this.scripts.readProps,
-        [this.document.uri.fsPath, '--format', 'json'],
-        this.pythonOptions,
-      );
-      // 持久化前先校验 JSON。
-      const env = parsePropsJson(result.stdout);
+      const env = await readViProps(this.document.uri.fsPath, this.scripts, this.runtimeOptions);
       await this.cache.writeProps(entry, toCachedPropsJson(env));
     } catch (err) {
-      const detail = err instanceof PythonScriptError ? err.message : String(err);
+      const detail = err instanceof Error ? err.message : String(err);
       await this.postError(`读取属性失败: ${detail}`);
     }
   }
 
   private async savePropsAndReload(updates: Record<string, unknown>): Promise<void> {
-    const viPath = this.document.uri.fsPath;
-    const updatesJson = JSON.stringify(updates);
-    const tmpFile = path.join(
-      os.tmpdir(),
-      `labview-vi-write-${crypto.randomBytes(8).toString('hex')}.json`,
-    );
-    let result;
+    let env: PropsJsonEnvelope;
     try {
-      await fs.promises.writeFile(tmpFile, updatesJson, 'utf-8');
-      result = await runPythonScriptOrFail(
-        this.scripts.writeProps,
-        [viPath, '--updates-file', tmpFile],
-        this.pythonOptions,
-      );
+      env = await writeViProps(this.document.uri.fsPath, updates, this.scripts, this.runtimeOptions);
     } catch (err) {
-      const detail = err instanceof PythonScriptError ? err.message : String(err);
+      const detail = err instanceof Error ? err.message : String(err);
       await this.postError(`写入属性失败: ${detail}`);
       return;
-    } finally {
-      try { await fs.promises.unlink(tmpFile); } catch { /* 清理失败可安全忽略 */ }
     }
 
     let saveError = '';
-    try {
-      const env = parsePropsJson(result.stdout);
-      if (env.saved === false) {
-        saveError = env.saveError ?? 'SaveVI 调用失败。';
-      }
-      // 单个属性写入失败：
-      const failures = Object.entries(env.props)
-        .filter(([, p]) => !p.ok)
-        .map(([name, p]) => `${name}: ${p.error ?? '未知错误'}`);
-      if (failures.length > 0) {
-        await this.postError('部分属性写入失败:\n' + failures.join('\n'));
-      }
-    } catch {
-      // 容忍 stdout 解析失败 —— VI 仍然可能已经写盘成功。
+    if (env.saved === false) {
+      saveError = env.saveError ?? 'SaveVI 调用失败。';
+    }
+    const failures = Object.entries(env.props)
+      .filter(([, p]) => !p.ok)
+      .map(([name, p]) => `${name}: ${p.error ?? '未知错误'}`);
+    if (failures.length > 0) {
+      await this.postError('部分属性写入失败:\n' + failures.join('\n'));
     }
 
     if (saveError) {

@@ -55,11 +55,6 @@
     "configuration": {
       "title": "LabVIEW VI Support",
       "properties": {
-        "labview-vi-support.pythonPath": {
-          "type": "string",
-          "default": "",
-          "description": "%config.pythonPath.description%"
-        },
         "labview-vi-support.scriptTimeoutMs": {
           "type": "number",
           "default": 120000,
@@ -80,8 +75,8 @@
     "package:vsix": "vsce package --skip-license --no-dependencies",
     "install:vsix": "node scripts/install-vsix.js",
     "load:local": "npm run package:vsix && npm run install:vsix",
-    "compile-tests": "tsc -p . --outDir out",
-    "watch-tests": "tsc -p . -w --outDir out",
+    "compile-tests": "node scripts/clean-out.js && tsc -p . --outDir out",
+    "watch-tests": "node scripts/clean-out.js && tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
