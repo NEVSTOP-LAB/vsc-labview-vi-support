@@ -21,7 +21,7 @@
   /** @type {Record<string, {original: string|null, current: string, type: string, writable: boolean}>} */
   const propRows = {};
   let displayMode = 'both';      // 'fp' | 'bd' | 'both'
-  let tableVisible = true;
+  let tableVisible = false;
   /** @type {Record<'fp'|'bd', { scale: number, x: number, y: number, naturalW: number, naturalH: number }>} */
   const viewState = {
     fp: { scale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0 },
@@ -181,7 +181,7 @@
     if (rect.width <= 0 || rect.height <= 0) { return; }
     const sx = rect.width / vs.naturalW;
     const sy = rect.height / vs.naturalH;
-    const scale = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.min(sx, sy, 1)));
+    const scale = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.min(sx, sy)));
     vs.scale = scale;
     vs.x = Math.max(0, (rect.width - vs.naturalW * scale) / 2);
     vs.y = Math.max(0, (rect.height - vs.naturalH * scale) / 2);
@@ -290,6 +290,11 @@
     btnTable.classList.toggle('active', tableVisible);
     tableArea.classList.toggle('hidden', !tableVisible);
     imageArea.style.flex = tableVisible ? '' : '1 1 100%';
+    requestAnimationFrame(() => {
+      fitToViewport('fp');
+      fitToViewport('bd');
+      refreshZoomLabel();
+    });
   });
 
   btnZoomIn.addEventListener('click',    () => zoomBy(activePane(), ZOOM_STEP));
