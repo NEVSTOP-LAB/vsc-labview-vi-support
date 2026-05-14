@@ -1,0 +1,179 @@
+/**
+ * Parse the response file format emitted by:
+ *   - read_vi_props_worker.vbs
+ *   - write_vi_props_worker.vbs
+ *
+ * Both share the same key=value layout:
+ *
+ *   ok=1|0
+ *   selection=<ascii>
+ *   reason_b64=<base64-utf8>
+ *   connected_version_b64=<base64-utf8>
+ *   connected_directory_b64=<base64-utf8>
+ *   attempts=<int>
+ *   saved=1|0                       (write only)
+ *   save_errmsg_b64=<base64-utf8>   (write only, when saved=0)
+ *   prop_<Name>_type=String|Boolean|Number
+ *   prop_<Name>_ok=1|0
+ *   prop_<Name>_val=<base64-utf8>     (ok=1)
+ *   prop_<Name>_errmsg=<base64-utf8>  (ok=0)
+ *
+ * In practice the props are returned by the read/write Python wrappers as
+ * already-parsed JSON, so this parser is exercised in two ways:
+ *  1. Direct: `parsePropsResponseText` works on the raw response file.
+ *  2. JSON pass-through: `parsePropsJson` validates the JSON envelope
+ *     produced by the Python entry points before exposing it to the UI.
+ */
+
+export type PropType = 'String' | 'Boolean' | 'Number';
+
+export interface PropEntry {
+  ok: boolean;
+  type: PropType | string;
+  value: string | null;
+  error: string | null;
+  /** Filled in by the Python wrapper from `_PROP_META`. */
+  writable?: boolean;
+  description?: string;
+}
+
+export interface PropsResponse {
+  ok: boolean;
+  selection: string;
+  reason: string;
+  connectedVersion: string;
+  connectedDirectory: string;
+  attempts: number;
+  /** Present in write-worker responses. */
+  saved?: boolean;
+  saveError?: string;
+  props: Record<string, PropEntry>;
+}
+
+function decodeBase64Utf8(value: string): string {
+  if (!value) {
+    return '';
+  }
+  // Strip a possible leading BOM (the read script does this too).
+  return Buffer.from(value, 'base64').toString('utf-8').replace(/^\ufeff/, '');
+}
+
+export function parsePropsResponseText(text: string): PropsResponse {
+  const raw: Record<string, string> = {};
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.replace(/[\r\n]+$/, '');
+    if (!line || !line.includes('=')) {
+      continue;
+    }
+    const eq = line.indexOf('=');
+    raw[line.slice(0, eq)] = line.slice(eq + 1);
+  }
+
+  const result: PropsResponse = {
+    ok:                 raw['ok'] === '1',
+    selection:          raw['selection'] ?? '',
+    reason:             decodeBase64Utf8(raw['reason_b64'] ?? ''),
+    connectedVersion:   decodeBase64Utf8(raw['connected_version_b64'] ?? ''),
+    connectedDirectory: decodeBase64Utf8(raw['connected_directory_b64'] ?? ''),
+    attempts:           parseInt(raw['attempts'] ?? '0', 10) || 0,
+    props:              {},
+  };
+
+  if ('saved' in raw) {
+    result.saved = raw['saved'] === '1';
+  }
+  if ('save_errmsg_b64' in raw) {
+    result.saveError = decodeBase64Utf8(raw['save_errmsg_b64']);
+  }
+
+  for (const key of Object.keys(raw)) {
+    if (!key.startsWith('prop_')) {
+      continue;
+    }
+    const rest = key.slice(5);
+    const lastUnderscore = rest.lastIndexOf('_');
+    if (lastUnderscore < 0) {
+      continue;
+    }
+    const propName = rest.slice(0, lastUnderscore);
+    const suffix = rest.slice(lastUnderscore + 1);
+
+    const entry = result.props[propName] ?? {
+      ok: false, type: 'String' as PropType, value: null, error: null,
+    };
+    const value = raw[key];
+    switch (suffix) {
+      case 'type':   entry.type = value as PropType; break;
+      case 'ok':     entry.ok = value === '1'; break;
+      case 'val':    entry.value = decodeBase64Utf8(value); break;
+      case 'errmsg': entry.error = decodeBase64Utf8(value); break;
+      // unknown suffix → ignore (forward compat)
+    }
+    result.props[propName] = entry;
+  }
+
+  return result;
+}
+
+/**
+ * Validate and normalize the JSON object emitted by the Python wrappers'
+ * stdout. `read_vi_props.py --format json` returns:
+ *
+ *   { "vi_path": "...", "lv_version": "...", "props": { Name: PropEntry, ... } }
+ *
+ * `write_vi_props.py` returns:
+ *
+ *   { "vi_path": "...", "lv_version": "...", "saved": bool,
+ *     "save_error": str, "props": { ... } }
+ *
+ * This function tolerates both shapes and returns a typed structure suitable
+ * for the WebView.
+ */
+export interface PropsJsonEnvelope {
+  viPath: string;
+  lvVersion: string | null;
+  saved?: boolean;
+  saveError?: string;
+  props: Record<string, PropEntry>;
+}
+
+export function parsePropsJson(jsonText: string): PropsJsonEnvelope {
+  const parsed: unknown = JSON.parse(jsonText);
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new Error('Props JSON must be an object.');
+  }
+  const obj = parsed as Record<string, unknown>;
+  const propsObj = obj['props'];
+  if (typeof propsObj !== 'object' || propsObj === null) {
+    throw new Error('Props JSON missing "props" object.');
+  }
+
+  const props: Record<string, PropEntry> = {};
+  for (const [name, raw] of Object.entries(propsObj as Record<string, unknown>)) {
+    if (typeof raw !== 'object' || raw === null) {
+      continue;
+    }
+    const entry = raw as Record<string, unknown>;
+    props[name] = {
+      ok:          Boolean(entry['ok']),
+      type:        (entry['type'] as PropType) ?? 'String',
+      value:       (entry['value'] as string | null) ?? null,
+      error:       (entry['error'] as string | null) ?? null,
+      writable:    typeof entry['writable']    === 'boolean' ? entry['writable']    as boolean : undefined,
+      description: typeof entry['description'] === 'string'  ? entry['description'] as string  : undefined,
+    };
+  }
+
+  const envelope: PropsJsonEnvelope = {
+    viPath:    typeof obj['vi_path']    === 'string' ? (obj['vi_path']    as string) : '',
+    lvVersion: typeof obj['lv_version'] === 'string' ? (obj['lv_version'] as string) : null,
+    props,
+  };
+  if (typeof obj['saved'] === 'boolean') {
+    envelope.saved = obj['saved'] as boolean;
+  }
+  if (typeof obj['save_error'] === 'string') {
+    envelope.saveError = obj['save_error'] as string;
+  }
+  return envelope;
+}
