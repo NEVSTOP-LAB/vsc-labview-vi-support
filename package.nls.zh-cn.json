@@ -2,6 +2,6 @@
   "commands.category": "LabVIEW VI",
   "commands.helloWorld": "你好，世界",
   "editor.viEditor.displayName": "LabVIEW VI 预览",
-  "config.pythonPath.description": "用于调用内置原型脚本的 Python 可执行文件路径。留空则使用系统默认（Windows 上为 `python`，其它平台为 `python3`）。",
+  "config.pythonPath.description": "用于调用内置原型脚本的 Python 可执行文件路径。留空时会先自动探测工作区虚拟环境（.venv/venv/env），找不到时再回退到系统默认（Windows 上为 `python`，其它平台为 `python3`）。",
   "config.scriptTimeoutMs.description": "调用内置 Python 脚本（图像导出 / 属性读取 / 属性写入）的超时时间（毫秒）。"
 }

@@ -2,6 +2,6 @@
   "commands.category": "LabVIEW VI",
   "commands.helloWorld": "Hello World",
   "editor.viEditor.displayName": "LabVIEW VI Preview",
-  "config.pythonPath.description": "Path to the Python executable used to invoke the bundled prototype scripts. Leave empty to use the system default (`python` on Windows, `python3` elsewhere).",
+  "config.pythonPath.description": "Path to the Python executable used to invoke the bundled prototype scripts. Leave empty to auto-detect a workspace virtual environment (.venv/venv/env) before falling back to the system default (`python` on Windows, `python3` elsewhere).",
   "config.scriptTimeoutMs.description": "Timeout in milliseconds applied to each invocation of the bundled Python scripts (image export / property read / property write)."
 }

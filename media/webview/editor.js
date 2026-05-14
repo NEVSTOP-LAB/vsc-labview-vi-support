@@ -150,10 +150,17 @@
         placeholder.classList.remove('hidden');
         placeholder.textContent = '图像加载失败。';
       };
-      // Cache-bust on hash change is implicit via different URI; force reload
-      // when the same URI comes back after Reload by appending a timestamp.
-      const cacheBust = uri.includes('?') ? '&' : '?';
-      img.src = uri + cacheBust + 't=' + Date.now();
+      if (uri.startsWith('data:')) {
+        // Data URLs cannot be cache-busted by appending query parameters.
+        // Reset first so reassigning the same URI after Reload still reloads.
+        img.removeAttribute('src');
+        img.src = uri;
+      } else {
+        // Cache-bust on hash change is implicit via different URI; force reload
+        // when the same URI comes back after Reload by appending a timestamp.
+        const cacheBust = uri.includes('?') ? '&' : '?';
+        img.src = uri + cacheBust + 't=' + Date.now();
+      }
     } else {
       img.removeAttribute('src');
       img.classList.remove('loaded');

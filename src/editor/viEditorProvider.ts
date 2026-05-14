@@ -16,6 +16,7 @@ import {
   runPythonScriptOrFail,
   type RunPythonOptions,
 } from '../scripts/pythonRunner';
+import { resolvePythonExecutableForWorkspace } from '../scripts/pythonPathResolver';
 import { resolveScriptPaths, type ScriptPaths } from '../scripts/scriptPaths';
 
 /**
@@ -73,7 +74,7 @@ export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViD
       webviewPanel,
       this.cache,
       this.scripts,
-      this.getPythonOptions(),
+      this.getPythonOptions(document.uri),
     );
 
     webviewPanel.webview.onDidReceiveMessage((msg) => {
@@ -85,12 +86,16 @@ export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViD
     await session.initialize();
   }
 
-  private getPythonOptions(): RunPythonOptions {
+  private getPythonOptions(documentUri: vscode.Uri): RunPythonOptions {
     const cfg = vscode.workspace.getConfiguration('labview-vi-support');
     const customExe = cfg.get<string>('pythonPath');
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(documentUri);
     const timeout  = cfg.get<number>('scriptTimeoutMs');
     return {
-      pythonExecutable: customExe && customExe.length > 0 ? customExe : undefined,
+      pythonExecutable: resolvePythonExecutableForWorkspace({
+        configuredPythonPath: customExe,
+        workspaceFolderPath: workspaceFolder?.uri.fsPath,
+      }),
       timeoutMs: typeof timeout === 'number' && timeout > 0 ? timeout : undefined,
     };
   }
@@ -395,8 +400,8 @@ class ViEditorSession {
       type: 'state',
       viPath: this.document.uri.fsPath,
       hash: this.currentEntry.hash,
-      fpImage: partial.fpImage ? this.toWebviewUri(partial.fpImage) : null,
-      bdImage: partial.bdImage ? this.toWebviewUri(partial.bdImage) : null,
+      fpImage: partial.fpImage ? await this.toWebviewImageSource(partial.fpImage) : null,
+      bdImage: partial.bdImage ? await this.toWebviewImageSource(partial.bdImage) : null,
       props: partial.props,
       errors: partial.errors,
       loading: partial.loading,
@@ -408,7 +413,12 @@ class ViEditorSession {
     await this.panel.webview.postMessage({ type: 'error', message });
   }
 
-  private toWebviewUri(absolutePath: string): string {
-    return this.panel.webview.asWebviewUri(vscode.Uri.file(absolutePath)).toString();
+  private async toWebviewImageSource(absolutePath: string): Promise<string> {
+    try {
+      const content = await fs.promises.readFile(absolutePath);
+      return `data:image/png;base64,${content.toString('base64')}`;
+    } catch {
+      return this.panel.webview.asWebviewUri(vscode.Uri.file(absolutePath)).toString();
+    }
   }
 }
