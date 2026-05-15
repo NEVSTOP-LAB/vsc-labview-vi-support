@@ -1007,28 +1007,22 @@ End Sub
 Function TrySaveFrontPanelImage(ByRef viRef, ByVal finalOutputPath, ByVal exportRoot, ByVal htmlPath, ByVal imageDir, ByRef htmlExported, ByRef errorMessage)
     Dim fso
     Dim sourcePath
-    Dim captureError
-    Dim fallbackError
+    Dim exportError
 
     TrySaveFrontPanelImage = False
     errorMessage = ""
-    captureError = ""
-    fallbackError = ""
+    exportError = ""
     Set fso = CreateObject("Scripting.FileSystemObject")
 
-    If TryCaptureFrontPanelPng(viRef, finalOutputPath, exportRoot, captureError) Then
-        TrySaveFrontPanelImage = True
-        Exit Function
-    End If
-
-    If Not EnsureHtmlExport(viRef, htmlPath, imageDir, htmlExported, fallbackError) Then
-        errorMessage = "GetPanelImage failed: " & captureError & ". HTML fallback failed: " & fallbackError
+    ' GetPanelImage can hard-crash some LabVIEW builds before VBScript gets a recoverable COM error.
+    If Not EnsureHtmlExport(viRef, htmlPath, imageDir, htmlExported, exportError) Then
+        errorMessage = exportError
         Exit Function
     End If
 
     sourcePath = FindExportedImage(imageDir, "p.png")
     If Len(sourcePath) = 0 Then
-        errorMessage = "GetPanelImage failed: " & captureError & ". LabVIEW HTML export did not produce *p.png."
+        errorMessage = "LabVIEW HTML export did not produce *p.png."
         Exit Function
     End If
 
@@ -1037,7 +1031,7 @@ Function TrySaveFrontPanelImage(ByRef viRef, ByVal finalOutputPath, ByVal export
     EnsureParentFolder finalOutputPath
     fso.CopyFile sourcePath, finalOutputPath, True
     If Err.Number <> 0 Then
-        errorMessage = "GetPanelImage failed: " & captureError & ". HTML fallback copy failed: " & Err.Description
+        errorMessage = "HTML export copy failed: " & Err.Description
         Err.Clear
         On Error GoTo 0
         Exit Function

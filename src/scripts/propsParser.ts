@@ -35,6 +35,7 @@ export interface PropEntry {
   value: string | null;
   error: string | null;
   loaded?: boolean;
+  pending?: boolean;
   /** Filled in by the runtime metadata layer. */
   writable?: boolean;
   accessMode?: PropAccess;
@@ -190,6 +191,7 @@ export function parsePropsJson(jsonText: string): PropsJsonEnvelope {
       value:       (entry['value'] as string | null) ?? null,
       error:       (entry['error'] as string | null) ?? null,
       loaded:      typeof entry['loaded']      === 'boolean' ? entry['loaded']      as boolean : undefined,
+      pending:     typeof entry['pending']     === 'boolean' ? entry['pending']     as boolean : undefined,
       writable:    typeof entry['writable']    === 'boolean' ? entry['writable']    as boolean : undefined,
       accessMode:  typeof entry['accessMode']  === 'string'  ? entry['accessMode']  as PropAccess : undefined,
       description: typeof entry['description'] === 'string'  ? entry['description'] as string  : undefined,

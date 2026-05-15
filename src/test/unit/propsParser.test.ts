@@ -113,7 +113,7 @@ suite('propsParser.parsePropsJson', () => {
       props: {
         Description: {
           ok: true, type: 'String', value: 'd', error: null,
-          loaded: true, writable: true, accessMode: 'readwrite', description: 'desc', displayName: '说明', group: 'general', groupLabel: '通用信息',
+          loaded: true, pending: true, writable: true, accessMode: 'readwrite', description: 'desc', displayName: '说明', group: 'general', groupLabel: '通用信息',
           source: 'dynamic', sourceLabel: '动态', sourceDescription: '动态属性',
         },
         FPWinIsFrontMost: {
@@ -129,6 +129,7 @@ suite('propsParser.parsePropsJson', () => {
     assert.strictEqual(env.props['Description'].writable, true);
     assert.strictEqual(env.props['Description'].accessMode, 'readwrite');
     assert.strictEqual(env.props['Description'].loaded, true);
+    assert.strictEqual(env.props['Description'].pending, true);
     assert.strictEqual(env.props['Description'].displayName, '说明');
     assert.strictEqual(env.props['Description'].source, 'dynamic');
     assert.strictEqual(env.props['FPWinIsFrontMost'].groupLabel, '前面板窗口外观与行为');
@@ -188,6 +189,7 @@ suite('propsParser cached props JSON', () => {
           value: '中文说明',
           error: null,
           loaded: false,
+          pending: true,
           writable: true,
           accessMode: 'readwrite',
           description: 'VI 的描述信息。',
@@ -210,6 +212,7 @@ suite('propsParser cached props JSON', () => {
     assert.strictEqual(parsed.props['Description'].displayName, '说明');
     assert.strictEqual(parsed.props['Description'].groupLabel, '通用信息');
     assert.strictEqual(parsed.props['Description'].loaded, false);
+    assert.strictEqual(parsed.props['Description'].pending, true);
     assert.strictEqual(parsed.props['Description'].accessMode, 'readwrite');
     assert.strictEqual(parsed.props['Description'].source, 'dynamic');
     assert.strictEqual(parsed.dynamicPropsLoaded, false);

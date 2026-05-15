@@ -5,7 +5,7 @@ import {
   buildWriteRequestLines,
   normalizePropsEnvelope,
 } from '../../scripts/labviewRuntime';
-import { decorateProps } from '../../scripts/propMetadata';
+import { buildLoadingProps, decorateProps } from '../../scripts/propMetadata';
 
 function b64(text: string): string {
   return Buffer.from(text, 'utf-8').toString('base64');
@@ -95,6 +95,19 @@ suite('propMetadata.decorateProps', () => {
     assert.strictEqual(props['FPMinimizable'].loaded, false);
     assert.strictEqual(props['FPWinIsFrontMost'].loaded, true);
     assert.strictEqual(props['FPWinIsFrontMost'].value, null);
+    assert.strictEqual(props['FPWinIsFrontMost'].accessMode, 'writeonly');
+  });
+
+  test('can build a full loading placeholder table from metadata', () => {
+    const props = buildLoadingProps();
+
+    assert.strictEqual(props['Name'].pending, true);
+    assert.strictEqual(props['Name'].loaded, true);
+    assert.strictEqual(props['Name'].displayName, '名称');
+    assert.strictEqual(props['Name'].source, 'static');
+    assert.strictEqual(props['FPMinimizable'].pending, true);
+    assert.strictEqual(props['FPMinimizable'].writable, true);
+    assert.strictEqual(props['FPWinIsFrontMost'].pending, true);
     assert.strictEqual(props['FPWinIsFrontMost'].accessMode, 'writeonly');
   });
 });

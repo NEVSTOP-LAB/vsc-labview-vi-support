@@ -411,6 +411,48 @@ body.splitter-dragging * {
   text-align: center;
 }
 
+.props-table tr.loading-row td {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.loading-line {
+  height: 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vscode-foreground, #cccccc) 14%, transparent);
+  animation: loading-pulse 1.35s ease-in-out infinite;
+}
+
+.loading-line-name {
+  width: 72%;
+}
+
+.loading-line-type {
+  width: 64%;
+}
+
+.loading-line-access {
+  width: 40px;
+  margin: 0 auto;
+}
+
+.loading-line-value {
+  width: 68%;
+}
+
+.loading-line-desc {
+  width: 88%;
+}
+
+@keyframes loading-pulse {
+  0%, 100% {
+    opacity: 0.42;
+  }
+  50% {
+    opacity: 0.82;
+  }
+}
+
 .props-table th:nth-child(3),
 .props-table td:nth-child(3) {
   white-space: nowrap;

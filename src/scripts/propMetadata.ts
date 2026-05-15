@@ -162,6 +162,34 @@ function buildWriteOnlyEntry(definition: PropDefinition): PropEntry {
   };
 }
 
+function buildPendingEntry(definition: PropDefinition): PropEntry {
+  return {
+    ok: true,
+    type: definition.type,
+    value: null,
+    error: null,
+    loaded: true,
+    pending: true,
+    writable: definition.writable,
+    accessMode: definition.access,
+    description: definition.description,
+    displayName: definition.displayName,
+    group: definition.group,
+    groupLabel: PROP_GROUP_LABELS[definition.group],
+    source: definition.source,
+    sourceLabel: PROP_SOURCE_LABELS[definition.source],
+    sourceDescription: PROP_SOURCE_DESCRIPTIONS[definition.source],
+  };
+}
+
+export function buildLoadingProps(): Record<string, PropEntry> {
+  const props: Record<string, PropEntry> = {};
+  for (const name of PROP_ORDER) {
+    props[name] = buildPendingEntry(PROP_DEFINITIONS[name]);
+  }
+  return props;
+}
+
 export function decorateProps(
   rawProps: Record<string, PropEntry>,
   options: DecoratePropsOptions = {},

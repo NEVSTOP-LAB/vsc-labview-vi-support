@@ -12,6 +12,7 @@ import {
   normalizePropsEnvelope,
   readStaticViProps,
   readViProps,
+  UnsupportedPreviewExportError,
   writeViProps,
 } from '../scripts/labviewRuntime';
 import {
@@ -21,6 +22,7 @@ import {
   toCachedPropsJson,
   type PropsJsonEnvelope,
 } from '../scripts/propsParser';
+import { buildLoadingProps } from '../scripts/propMetadata';
 import { resolveScriptPaths, type ScriptPaths } from '../scripts/scriptPaths';
 import {
   VIEW_MODE_CONFIGURATION_KEY,
@@ -231,6 +233,7 @@ interface OutboundState {
 class ViEditorSession {
   private currentEntry: CacheEntry | null = null;
   private disposed = false;
+  private previewExportDisabledReason: string | null = null;
   private readonly disposables: vscode.Disposable[] = [];
   private fileChangeTimer: NodeJS.Timeout | null = null;
   /** 保证任意时刻只有一个 loadAndPush 在运行（防止 initialize + ready 并发触发）。 */
@@ -421,6 +424,7 @@ class ViEditorSession {
     }
 
     if (cachedProps === null) {
+      await this.pushLoadingPropsState(entry);
       try {
         cachedProps = await this.ensureStaticProps(entry);
       } catch (err) {
@@ -483,6 +487,7 @@ class ViEditorSession {
 
     let cachedProps = await this.readCachedProps(entry);
     if (cachedProps === null) {
+      await this.pushLoadingPropsState(entry);
       try {
         cachedProps = await this.ensureStaticProps(entry);
       } catch (err) {
@@ -531,7 +536,11 @@ class ViEditorSession {
     entry: CacheEntry,
     requestedPanels: { fp: boolean; bd: boolean },
   ): Promise<void> {
-    if (!this.isPreviewVisible() || (!requestedPanels.fp && !requestedPanels.bd)) {
+    if (
+      this.previewExportDisabledReason
+      || !this.isPreviewVisible()
+      || (!requestedPanels.fp && !requestedPanels.bd)
+    ) {
       return;
     }
     const outputPaths: Partial<Record<'fp' | 'bd', string>> = {};
@@ -544,6 +553,11 @@ class ViEditorSession {
     try {
       await exportViPanelImages(this.document.uri.fsPath, outputPaths, this.scripts, this.runtimeOptions);
     } catch (err) {
+      if (err instanceof UnsupportedPreviewExportError) {
+        this.previewExportDisabledReason = err.message;
+        await this.postError(err.message);
+        return;
+      }
       const detail = err instanceof Error ? err.message : String(err);
       if (requestedPanels.fp && requestedPanels.bd) {
         await this.postError(`预览导出失败: ${detail}`);
@@ -673,6 +687,25 @@ class ViEditorSession {
 
   private isDynamicPropsLoaded(envelope: PropsJsonEnvelope | null): boolean {
     return envelope?.dynamicPropsLoaded === true;
+  }
+
+  private buildLoadingPropsEnvelope(): PropsJsonEnvelope {
+    return {
+      viPath: this.document.uri.fsPath,
+      lvVersion: null,
+      dynamicPropsLoaded: false,
+      props: buildLoadingProps(),
+    };
+  }
+
+  private async pushLoadingPropsState(entry: CacheEntry): Promise<void> {
+    await this.pushState({
+      fpImage: this.cache.has(entry, 'fpImage') ? entry.artifacts.fpImage : null,
+      bdImage: this.cache.has(entry, 'bdImage') ? entry.artifacts.bdImage : null,
+      props: this.buildLoadingPropsEnvelope(),
+      errors: [],
+      loading: this.buildLoadingState(entry, true),
+    });
   }
 
   private async ensureStaticProps(

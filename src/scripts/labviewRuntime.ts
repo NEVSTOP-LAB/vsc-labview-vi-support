@@ -16,6 +16,7 @@ import {
   requestLabVIEWSession,
 } from './labviewSession';
 import {
+  formatLabVIEWDisplayName,
   formatLabVIEWExpectedVersion,
   resolveLabVIEWVersionForPath,
   type LabVIEWArchitecture,
@@ -72,6 +73,22 @@ interface ImageWorkerResponse {
   outputPath: string;
   fpOutputPath: string;
   bdOutputPath: string;
+}
+
+export class UnsupportedPreviewExportError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = 'UnsupportedPreviewExportError';
+  }
+}
+
+export function getUnsafePreviewExportReason(
+  version: Pick<LabVIEWVersion, 'major' | 'minor'>,
+): string | null {
+  if (version.major === 20 && version.minor === 0) {
+    return `${formatLabVIEWDisplayName(version)} 的预览导出已为稳定性自动禁用：该版本在导出 VI 预览图时可能直接导致 LabVIEW 崩溃。请使用仅属性表视图。`;
+  }
+  return null;
 }
 
 export function parseViSavedVersionHeader(header: Buffer): LabVIEWVersion | null {
@@ -176,6 +193,10 @@ export async function exportViPanelImages(
   }
   const target = await resolveTargetInstallation(absViPath);
   ensureTargetInstallation(target, absViPath);
+  const unsupportedReason = getTargetPreviewExportUnsupportedReason(target);
+  if (unsupportedReason) {
+    throw new UnsupportedPreviewExportError(unsupportedReason);
+  }
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -637,6 +658,14 @@ function ensureTargetInstallation(target: RuntimeTargetSelection, viPath: string
     + `Detected installations: ${available}. `
     + 'Please install a matching version or update the project LabVIEW marker.',
   );
+}
+
+function getTargetPreviewExportUnsupportedReason(target: RuntimeTargetSelection): string | null {
+  const version = target.installation ?? target.requestedVersion;
+  if (!version) {
+    return null;
+  }
+  return getUnsafePreviewExportReason(version);
 }
 
 function selectScriptHost(architecture: string | undefined): string {
