@@ -440,15 +440,20 @@ Sub ConnectLabVIEW()
     lastMismatch = ""
     deadline     = DateAdd("s", timeoutSeconds, Now)
 
-    If Len(targetExe) > 0 Then
-        CleanupAutomationProcesses targetExe
-        WScript.Sleep 400
-        StartTargetLabVIEW targetExe
-        WScript.Sleep 1000
+    If TryReuseRunningLabVIEW(lastMismatch) Then
+        Exit Sub
     End If
 
     Do While Now < deadline
         attempts = attempts + 1
+
+            If Len(targetExe) > 0 And attempts = 1 Then
+            StartTargetLabVIEW targetExe
+            WScript.Sleep 700
+            If TryReuseRunningLabVIEW(lastMismatch) Then
+                Exit Sub
+            End If
+        End If
 
         On Error Resume Next
         Set app = Nothing
@@ -467,11 +472,11 @@ Sub ConnectLabVIEW()
             If AppMatches(appDir, appVer) Then
                 On Error GoTo 0
                 If Len(targetExe) > 0 Then
-                    selection = "matched-target-labview-application"
-                    reason    = "Connected to the requested LabVIEW installation."
+                    selection = "created-target-labview-application"
+                    reason    = "Created or attached a LabVIEW automation instance for the requested installation."
                 Else
-                    selection = "connected-default-labview-application"
-                    reason    = "No target version specified. Used the current default instance."
+                    selection = "created-default-labview-application"
+                    reason    = "No reusable LabVIEW instance was available. Created a new automation instance."
                 End If
                 Exit Sub
             End If
@@ -484,8 +489,6 @@ Sub ConnectLabVIEW()
         On Error GoTo 0
 
         If Len(targetExe) > 0 And (attempts Mod 2 = 0) Then
-            CleanupAutomationProcesses targetExe
-            WScript.Sleep 300
             StartTargetLabVIEW targetExe
         End If
 
@@ -500,6 +503,55 @@ Sub ConnectLabVIEW()
     selection = "failed-to-create-labview-application"
     Err.Raise vbObjectError + 110, , createErr
 End Sub
+
+Function TryReuseRunningLabVIEW(ByRef mismatchMessage)
+    Dim candidate
+    Dim appDir
+    Dim appVer
+
+    mismatchMessage = ""
+    TryReuseRunningLabVIEW = False
+
+    On Error Resume Next
+    Set candidate = Nothing
+    Err.Clear
+    Set candidate = GetObject(, "LabVIEW.Application")
+    If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        Exit Function
+    End If
+
+    appDir = SafeGetAppDirectory(candidate)
+    appVer = SafeGetAppVersion(candidate)
+    connectedDirectory = appDir
+    connectedVersion   = appVer
+
+    If AppMatches(appDir, appVer) Then
+        Set app = candidate
+        If Len(targetExe) > 0 Then
+            selection = "reused-running-labview-application"
+            reason    = "Reused an already running LabVIEW instance matching the requested installation."
+        Else
+            selection = "reused-default-labview-application"
+            reason    = "Reused the current LabVIEW instance."
+        End If
+        TryReuseRunningLabVIEW = True
+    Else
+        mismatchMessage = "Connected to " & DescribeApp(appDir, appVer) & _
+                          ", which does not match the requested target."
+        ReleaseComObject candidate
+    End If
+    On Error GoTo 0
+End Function
+
+Function ShouldActivateTargetInstance(ByVal attemptNumber)
+    If Len(targetExe) = 0 Then
+        ShouldActivateTargetInstance = False
+        Exit Function
+    End If
+    ShouldActivateTargetInstance = (attemptNumber = 1 Or (attemptNumber Mod 2 = 0))
+End Function
 
 Function AppMatches(ByVal appDir, ByVal appVer)
     AppMatches = False
@@ -555,6 +607,35 @@ Sub CleanupAutomationProcesses(ByVal exePath)
     Next
     On Error GoTo 0
 End Sub
+
+Function IsTargetProcessRunning(ByVal exePath)
+    Dim service
+    Dim processList
+    Dim processItem
+    Dim processPath
+
+    IsTargetProcessRunning = False
+
+    On Error Resume Next
+    Set service = GetObject("winmgmts:root\cimv2")
+    If Err.Number <> 0 Then Err.Clear : Exit Function
+
+    Set processList = service.ExecQuery( _
+        "SELECT ExecutablePath FROM Win32_Process WHERE Name='LabVIEW.exe'")
+    If Err.Number <> 0 Then Err.Clear : Exit Function
+
+    For Each processItem In processList
+        processPath = ""
+        If Not IsNull(processItem.ExecutablePath) Then
+            processPath = NormalizePath(CStr(processItem.ExecutablePath))
+        End If
+        If processPath = NormalizePath(exePath) Then
+            IsTargetProcessRunning = True
+            Exit Function
+        End If
+    Next
+    On Error GoTo 0
+End Function
 
 Sub StartTargetLabVIEW(ByVal exePath)
     Dim shell
