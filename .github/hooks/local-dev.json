@@ -3,11 +3,21 @@
     "PostToolUse": [
       {
         "type": "command",
+        "command": "node scripts/copilot-doc-update-hook.js",
+        "timeout": 30
+      },
+      {
+        "type": "command",
         "command": "node scripts/copilot-local-dev-hook.js",
         "timeout": 30
       }
     ],
     "Stop": [
+      {
+        "type": "command",
+        "command": "node scripts/copilot-doc-update-hook.js",
+        "timeout": 30
+      },
       {
         "type": "command",
         "command": "node scripts/copilot-local-dev-hook.js",
