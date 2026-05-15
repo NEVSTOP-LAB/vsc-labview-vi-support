@@ -211,20 +211,13 @@ Function TrySaveFrontPanelImage(ByRef viRef, ByVal finalOutputPath, ByVal export
     Else
         sourcePath = FindExportedImage(imageDir, "p.png")
         If Len(sourcePath) > 0 Then
-            On Error Resume Next
-            Err.Clear
-            EnsureParentFolder finalOutputPath
-            fso.CopyFile sourcePath, finalOutputPath, True
-            If Err.Number <> 0 Then
-                errorMessage = "HTML export copy failed: " & Err.Description
-                Err.Clear
-                On Error GoTo 0
+            If Not TryNormalizeFrontPanelPng(sourcePath, finalOutputPath, errorMessage) Then
+                htmlErrorMessage = "Front panel PNG normalization failed: " & errorMessage
+                errorMessage = ""
+            Else
+                TrySaveFrontPanelImage = True
                 Exit Function
             End If
-            On Error GoTo 0
-
-            TrySaveFrontPanelImage = True
-            Exit Function
         End If
 
         htmlErrorMessage = "LabVIEW HTML export did not produce *p.png."
@@ -331,6 +324,10 @@ Function TryCaptureFrontPanelPng(ByRef viRef, ByVal outputPath, ByVal exportRoot
     End If
 
     DeleteFileIfExists rawPath
+    If Not TryNormalizeFrontPanelPng(outputPath, outputPath, errorMessage) Then
+        CloseFrontPanelSafe viRef
+        Exit Function
+    End If
     CloseFrontPanelSafe viRef
     TryCaptureFrontPanelPng = True
 End Function
@@ -553,6 +550,81 @@ Function TryConvertRawRgbToPng(ByVal rawPath, ByVal width, ByVal height, ByVal o
     TryConvertRawRgbToPng = True
 End Function
 
+Function TryNormalizeFrontPanelPng(ByVal sourcePath, ByVal outputPath, ByRef errorMessage)
+    Dim shell
+    Dim exec
+    Dim command
+    Dim scriptPath
+    Dim stderrText
+    Dim stdoutText
+
+    TryNormalizeFrontPanelPng = False
+    errorMessage = ""
+
+    If Not FileExists(sourcePath) Then
+        errorMessage = "Front panel PNG not found: " & sourcePath
+        Exit Function
+    End If
+
+    scriptPath = BuildUniqueTempFilePath(GetTempFolder(), "labview-crop-front-panel-", ".ps1")
+    If Not TryWriteAsciiTextFile(scriptPath, BuildFrontPanelCropPowerShellScript(), errorMessage) Then
+        Exit Function
+    End If
+
+    command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command " _
+        & QuoteArg("& " & QuotePowerShellLiteral(scriptPath) _
+        & " -SourcePath " & QuotePowerShellLiteral(sourcePath) _
+        & " -OutputPath " & QuotePowerShellLiteral(outputPath))
+
+    On Error Resume Next
+    Set shell = CreateObject("WScript.Shell")
+    Set exec = shell.Exec(command)
+    If Err.Number <> 0 Then
+        errorMessage = "Failed to start PowerShell front panel normalization: " & Err.Description
+        Err.Clear
+        DeleteFileIfExists scriptPath
+        On Error GoTo 0
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    Do While exec.Status = 0
+        WScript.Sleep 100
+    Loop
+
+    stderrText = ""
+    stdoutText = ""
+    On Error Resume Next
+    If Not exec.StdErr.AtEndOfStream Then stderrText = Trim(exec.StdErr.ReadAll)
+    If Not exec.StdOut.AtEndOfStream Then stdoutText = Trim(exec.StdOut.ReadAll)
+    On Error GoTo 0
+    DeleteFileIfExists scriptPath
+
+    If exec.ExitCode <> 0 Then
+        errorMessage = stderrText
+        If Len(errorMessage) = 0 Then
+            errorMessage = stdoutText
+        End If
+        If Len(errorMessage) = 0 Then
+            errorMessage = "PowerShell front panel normalization failed with exit code " & CStr(exec.ExitCode) & "."
+        End If
+        Exit Function
+    End If
+
+    If Not FileExists(outputPath) Then
+        errorMessage = "PowerShell front panel normalization exited successfully but did not create output file."
+        If Len(stderrText) > 0 Then
+            errorMessage = errorMessage & " stderr=" & stderrText
+        End If
+        If Len(stdoutText) > 0 Then
+            errorMessage = errorMessage & " stdout=" & stdoutText
+        End If
+        Exit Function
+    End If
+
+    TryNormalizeFrontPanelPng = True
+End Function
+
 Function TryWriteAsciiTextFile(ByVal filePath, ByVal text, ByRef errorMessage)
     Dim fso
     Dim stream
@@ -607,6 +679,74 @@ Function BuildRawRgbToPngPowerShellScript()
     lines(19) = "} finally { $bitmap.UnlockBits($data) }"
     lines(20) = "$directory = Split-Path -Parent $OutputPath; if ($directory) { [System.IO.Directory]::CreateDirectory($directory) | Out-Null }; if (Test-Path $OutputPath) { Remove-Item $OutputPath -Force }; $bitmap.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png); $bitmap.Dispose()"
     BuildRawRgbToPngPowerShellScript = Join(lines, vbCrLf)
+End Function
+
+Function BuildFrontPanelCropPowerShellScript()
+    Dim lines(61)
+
+    lines(0) = "param([string]$SourcePath, [string]$OutputPath)"
+    lines(1) = "$ErrorActionPreference = 'Stop'"
+    lines(2) = "Add-Type -AssemblyName System.Drawing"
+    lines(3) = "function Save-NormalizedBitmap {"
+    lines(4) = "  param([System.Drawing.Bitmap]$BitmapToSave, [string]$DestinationPath)"
+    lines(5) = "  $directory = Split-Path -Parent $DestinationPath; if ($directory) { [System.IO.Directory]::CreateDirectory($directory) | Out-Null }"
+    lines(6) = "  $tempPath = Join-Path ([System.IO.Path]::GetTempPath()) ('labview-fp-crop-' + [System.Guid]::NewGuid().ToString('N') + '.png')"
+    lines(7) = "  try {"
+    lines(8) = "    if (Test-Path $tempPath) { Remove-Item $tempPath -Force }"
+    lines(9) = "    $BitmapToSave.Save($tempPath, [System.Drawing.Imaging.ImageFormat]::Png)"
+    lines(10) = "    if (Test-Path $DestinationPath) { Remove-Item $DestinationPath -Force }"
+    lines(11) = "    [System.IO.File]::Copy($tempPath, $DestinationPath, $true)"
+    lines(12) = "  } finally {"
+    lines(13) = "    if (Test-Path $tempPath) { Remove-Item $tempPath -Force }"
+    lines(14) = "  }"
+    lines(15) = "}"
+    lines(16) = "function Test-IsBackgroundPixel {"
+    lines(17) = "  param([System.Drawing.Color]$Pixel, [System.Drawing.Color]$Background, [int]$Tolerance)"
+    lines(18) = "  if ($Pixel.A -lt 32) { return $true }"
+    lines(19) = "  return [Math]::Abs([int]$Pixel.A - [int]$Background.A) -le $Tolerance -and [Math]::Abs([int]$Pixel.R - [int]$Background.R) -le $Tolerance -and [Math]::Abs([int]$Pixel.G - [int]$Background.G) -le $Tolerance -and [Math]::Abs([int]$Pixel.B - [int]$Background.B) -le $Tolerance"
+    lines(20) = "}"
+    lines(21) = "$sourceBitmap = [System.Drawing.Bitmap]::FromFile($SourcePath)"
+    lines(22) = "try {"
+    lines(23) = "  $sampleLongestSide = 512; $longestSide = [Math]::Max($sourceBitmap.Width, $sourceBitmap.Height)"
+    lines(24) = "  $sampleScale = if ($longestSide -gt $sampleLongestSide) { $sampleLongestSide / [double]$longestSide } else { 1.0 }"
+    lines(25) = "  $sampleWidth = [Math]::Max(1, [int][Math]::Round($sourceBitmap.Width * $sampleScale))"
+    lines(26) = "  $sampleHeight = [Math]::Max(1, [int][Math]::Round($sourceBitmap.Height * $sampleScale))"
+    lines(27) = "  $sampleBitmap = New-Object System.Drawing.Bitmap($sampleWidth, $sampleHeight, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)"
+    lines(28) = "  try {"
+    lines(29) = "    $graphics = [System.Drawing.Graphics]::FromImage($sampleBitmap)"
+    lines(30) = "    try { $graphics.DrawImage($sourceBitmap, 0, 0, $sampleWidth, $sampleHeight) } finally { $graphics.Dispose() }"
+    lines(31) = "    $borderWidth = [Math]::Max(1, [int][Math]::Round([Math]::Min($sampleWidth, $sampleHeight) * 0.08))"
+    lines(32) = "    $bucketStep = 16; $buckets = @{}"
+    lines(33) = "    for ($y = 0; $y -lt $sampleHeight; $y++) {"
+    lines(34) = "      for ($x = 0; $x -lt $sampleWidth; $x++) {"
+    lines(35) = "        if ($x -ge $borderWidth -and $y -ge $borderWidth -and $x -lt ($sampleWidth - $borderWidth) -and $y -lt ($sampleHeight - $borderWidth)) { continue }"
+    lines(36) = "        $pixel = $sampleBitmap.GetPixel($x, $y); if ($pixel.A -lt 200) { continue }"
+    lines(37) = "        $key = ('{0},{1},{2},{3}' -f ([int][Math]::Round($pixel.A / $bucketStep) * $bucketStep), ([int][Math]::Round($pixel.R / $bucketStep) * $bucketStep), ([int][Math]::Round($pixel.G / $bucketStep) * $bucketStep), ([int][Math]::Round($pixel.B / $bucketStep) * $bucketStep))"
+    lines(38) = "        if (-not $buckets.ContainsKey($key)) { $buckets[$key] = [PSCustomObject]@{ Count = 0; A = 0; R = 0; G = 0; B = 0 } }"
+    lines(39) = "        $bucket = $buckets[$key]; $bucket.Count += 1; $bucket.A += [int]$pixel.A; $bucket.R += [int]$pixel.R; $bucket.G += [int]$pixel.G; $bucket.B += [int]$pixel.B"
+    lines(40) = "      }"
+    lines(41) = "    }"
+    lines(42) = "    if ($buckets.Count -eq 0) { Save-NormalizedBitmap $sourceBitmap $OutputPath; return }"
+    lines(43) = "    $backgroundBucket = $buckets.Values | Sort-Object Count -Descending | Select-Object -First 1"
+    lines(44) = "    $background = [System.Drawing.Color]::FromArgb([int][Math]::Round($backgroundBucket.A / $backgroundBucket.Count), [int][Math]::Round($backgroundBucket.R / $backgroundBucket.Count), [int][Math]::Round($backgroundBucket.G / $backgroundBucket.Count), [int][Math]::Round($backgroundBucket.B / $backgroundBucket.Count))"
+    lines(45) = "    $tolerance = 18; $minX = $sampleWidth; $minY = $sampleHeight; $maxX = -1; $maxY = -1"
+    lines(46) = "    for ($y = 0; $y -lt $sampleHeight; $y++) {"
+    lines(47) = "      for ($x = 0; $x -lt $sampleWidth; $x++) {"
+    lines(48) = "        if (Test-IsBackgroundPixel ($sampleBitmap.GetPixel($x, $y)) $background $tolerance) { continue }"
+    lines(49) = "        if ($x -lt $minX) { $minX = $x }; if ($x -gt $maxX) { $maxX = $x }; if ($y -lt $minY) { $minY = $y }; if ($y -gt $maxY) { $maxY = $y }"
+    lines(50) = "      }"
+    lines(51) = "    }"
+    lines(52) = "    if ($maxX -lt 0) { Save-NormalizedBitmap $sourceBitmap $OutputPath; return }"
+    lines(53) = "    $scaleX = $sourceBitmap.Width / [double]$sampleWidth; $scaleY = $sourceBitmap.Height / [double]$sampleHeight; $padding = 12"
+    lines(54) = "    $left = [Math]::Max(0, [int][Math]::Floor($minX * $scaleX) - $padding); $top = [Math]::Max(0, [int][Math]::Floor($minY * $scaleY) - $padding)"
+    lines(55) = "    $right = [Math]::Min($sourceBitmap.Width - 1, [int][Math]::Ceiling(($maxX + 1) * $scaleX) - 1 + $padding); $bottom = [Math]::Min($sourceBitmap.Height - 1, [int][Math]::Ceiling(($maxY + 1) * $scaleY) - 1 + $padding)"
+    lines(56) = "    if ($left -le 0 -and $top -le 0 -and $right -ge ($sourceBitmap.Width - 1) -and $bottom -ge ($sourceBitmap.Height - 1)) { Save-NormalizedBitmap $sourceBitmap $OutputPath; return }"
+    lines(57) = "    $rect = New-Object System.Drawing.Rectangle $left, $top, ([Math]::Max(1, $right - $left + 1)), ([Math]::Max(1, $bottom - $top + 1))"
+    lines(58) = "    $croppedBitmap = $sourceBitmap.Clone($rect, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)"
+    lines(59) = "    try { Save-NormalizedBitmap $croppedBitmap $OutputPath } finally { $croppedBitmap.Dispose() }"
+    lines(60) = "  } finally { $sampleBitmap.Dispose() }"
+    lines(61) = "} finally { $sourceBitmap.Dispose() }"
+    BuildFrontPanelCropPowerShellScript = Join(lines, vbCrLf)
 End Function
 
 Function TryWriteRgbBmp(ByRef imageData, ByVal imageLowerBound, ByVal width, ByVal height, ByVal bmpPath, ByRef errorMessage)
