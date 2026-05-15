@@ -7,6 +7,11 @@ export interface StatusPresentation {
   warning: boolean;
 }
 
+export interface QuickPickInstallationPresentation {
+  installation: InstalledLabVIEW;
+  detail: string;
+}
+
 export function buildStatusPresentation(options: {
   rootDir: string;
   projectVersion: ResolvedLabVIEWVersion | null;
@@ -53,29 +58,93 @@ export function buildStatusPresentation(options: {
 export function buildPickDetail(
   installation: InstalledLabVIEW,
   currentVersion: ResolvedLabVIEWVersion | null,
+  activeViVersion: ResolvedLabVIEWVersion | null = null,
 ): string {
-  if (
-    currentVersion
-    && installation.major === currentVersion.major
-    && installation.minor === currentVersion.minor
-    && installation.architecture === (currentVersion.architecture ?? installation.architecture)
-  ) {
+  if (matchesInstallationVersion(installation, currentVersion)) {
     return '当前根目录已解析到该版本。';
   }
+  if (matchesInstallationVersion(installation, activeViVersion)) {
+    return '推荐：与当前活动 VI 保存版本一致。';
+  }
   return `注册表版本键: ${installation.registryKey}`;
+}
+
+export function buildQuickPickInstallations(
+  installations: readonly InstalledLabVIEW[],
+  currentVersion: ResolvedLabVIEWVersion | null,
+  activeViVersion: ResolvedLabVIEWVersion | null,
+): QuickPickInstallationPresentation[] {
+  return [...installations]
+    .map((installation, index) => ({
+      installation,
+      detail: buildPickDetail(installation, currentVersion, activeViVersion),
+      priority: rankInstallationForQuickPick(installation, currentVersion, activeViVersion),
+      index,
+    }))
+    .sort((left, right) => (
+      left.priority - right.priority
+      || compareInstallations(right.installation, left.installation)
+      || left.index - right.index
+    ))
+    .map(({ installation, detail }) => ({ installation, detail }));
 }
 
 export function buildQuickPickPlaceholder(
   rootDir: string,
   currentVersion: ResolvedLabVIEWVersion | null,
   installationCount: number,
+  activeViVersion: ResolvedLabVIEWVersion | null = null,
 ): string {
   if (!currentVersion) {
+    if (activeViVersion) {
+      const activeVersionLabel = formatLabVIEWDisplayName(activeViVersion, activeViVersion.architecture);
+      return installationCount > 1
+        ? `检测到多个 LabVIEW 版本，建议为根目录 ${rootDir} 选择与当前活动 VI 保存版本 ${activeVersionLabel} 一致的安装`
+        : `当前活动 VI 保存版本为 ${activeVersionLabel}，可将根目录 ${rootDir} 关联到本机可用安装`;
+    }
     return installationCount > 1
       ? `检测到多个 LabVIEW 版本，请为根目录 ${rootDir} 选择一个项目版本`
       : `为根目录 ${rootDir} 选择当前可用的 LabVIEW 版本`;
   }
   return `根目录当前解析为 ${formatLabVIEWDisplayName(currentVersion, currentVersion.architecture)}，选择后会写入 DEV ENVIRONMENT 标记`;
+}
+
+function matchesInstallationVersion(
+  installation: InstalledLabVIEW,
+  version: ResolvedLabVIEWVersion | null,
+): boolean {
+  return !!version
+    && installation.major === version.major
+    && installation.minor === version.minor
+    && installation.architecture === (version.architecture ?? installation.architecture);
+}
+
+function rankInstallationForQuickPick(
+  installation: InstalledLabVIEW,
+  currentVersion: ResolvedLabVIEWVersion | null,
+  activeViVersion: ResolvedLabVIEWVersion | null,
+): number {
+  if (matchesInstallationVersion(installation, currentVersion)) {
+    return 0;
+  }
+  if (matchesInstallationVersion(installation, activeViVersion)) {
+    return 1;
+  }
+  return 2;
+}
+
+function compareInstallations(left: InstalledLabVIEW, right: InstalledLabVIEW): number {
+  if (left.major !== right.major) {
+    return left.major - right.major;
+  }
+  if (left.minor !== right.minor) {
+    return left.minor - right.minor;
+  }
+  return architecturePriority(left.architecture) - architecturePriority(right.architecture);
+}
+
+function architecturePriority(architecture: InstalledLabVIEW['architecture']): number {
+  return architecture === 'x64' ? 1 : 0;
 }
 
 function hasMatchingInstallation(
