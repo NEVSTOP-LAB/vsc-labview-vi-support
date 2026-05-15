@@ -35,7 +35,6 @@ Set app = Nothing
 Set writableMeta = CreateObject("Scripting.Dictionary")
 writableMeta.CompareMode = 1
 writableMeta.Add "Description", "String|vi"
-writableMeta.Add "RevisionNumber", "String|vi"
 writableMeta.Add "EditMode", "Boolean|vi"
 writableMeta.Add "RunOnOpen", "Boolean|vi"
 writableMeta.Add "PreferredExecSystem", "Number|vi"
@@ -45,8 +44,6 @@ writableMeta.Add "AllowDebugging", "Boolean|vi"
 writableMeta.Add "IsReentrant", "Boolean|vi"
 writableMeta.Add "ReentrancyType", "Number|vi"
 writableMeta.Add "CloseFPAfterCall", "Boolean|vi"
-writableMeta.Add "FPState", "Number|vi"
-writableMeta.Add "FPWinBounds", "String|vi"
 writableMeta.Add "FPWinTitle", "String|vi"
 writableMeta.Add "FPRunTransparently", "Boolean|vi"
 writableMeta.Add "FPTransparency", "Number|vi"
@@ -131,6 +128,8 @@ Sub HandleRequest(ByRef request)
 
     On Error Resume Next
     Select Case command
+        Case "probe-session"
+            HandleProbeSession request
         Case "read-props"
             HandleReadProps request, timeoutSeconds
         Case "write-props"
@@ -147,6 +146,16 @@ Sub HandleRequest(ByRef request)
         Err.Clear
     End If
     On Error GoTo 0
+End Sub
+
+Sub HandleProbeSession(ByRef request)
+    If HasReusableSessionApp() Then
+        WriteFramedResponse BuildBaseResponse(True)
+    Else
+        selection = "no-reusable-session-labview-application"
+        reason = "No reusable persistent LabVIEW session is available."
+        WriteFramedResponse BuildBaseResponse(False)
+    End If
 End Sub
 
 Sub HandleReadProps(ByRef request, ByVal timeoutSeconds)
@@ -783,7 +792,6 @@ End Sub
 Sub AssignProp(ByRef viRef, ByVal propName, ByVal newVal)
     Select Case propName
         Case "Description"         : viRef.Description = CStr(newVal)
-        Case "RevisionNumber"      : viRef.RevisionNumber = CStr(newVal)
         Case "EditMode"            : viRef.EditMode = CoerceBool(newVal)
         Case "RunOnOpen"           : viRef.RunOnOpen = CoerceBool(newVal)
         Case "PreferredExecSystem" : viRef.PreferredExecSystem = CLng(newVal)
@@ -793,8 +801,6 @@ Sub AssignProp(ByRef viRef, ByVal propName, ByVal newVal)
         Case "IsReentrant"         : viRef.IsReentrant = CoerceBool(newVal)
         Case "ReentrancyType"      : viRef.ReentrancyType = CLng(newVal)
         Case "CloseFPAfterCall"    : viRef.CloseFPAfterCall = CoerceBool(newVal)
-        Case "FPState"             : viRef.FPState = CLng(newVal)
-        Case "FPWinBounds"         : viRef.FPWinBounds = CoerceBounds(newVal)
         Case "FPWinTitle"          : viRef.FPWinTitle = CStr(newVal)
         Case "FPRunTransparently"  : viRef.FPRunTransparently = CoerceBool(newVal)
         Case "FPTransparency"      : viRef.FPTransparency = CLng(newVal)

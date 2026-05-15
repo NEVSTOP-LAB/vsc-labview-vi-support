@@ -3,6 +3,7 @@ import * as assert from 'assert';
 import {
   buildInstalledLabVIEWDiscoveryScript,
   buildWriteRequestLines,
+  normalizePropsEnvelope,
 } from '../../scripts/labviewRuntime';
 import { decorateProps } from '../../scripts/propMetadata';
 
@@ -98,13 +99,37 @@ suite('propMetadata.decorateProps', () => {
 });
 
 suite('labviewRuntime.buildWriteRequestLines', () => {
+  test('normalizes nonreentrant VIs to reentrancy type 0 for display', () => {
+    const normalized = normalizePropsEnvelope({
+      viPath: 'C:\\repo\\demo.vi',
+      lvVersion: '20.0',
+      dynamicPropsLoaded: true,
+      props: {
+        IsReentrant: {
+          ok: true,
+          type: 'Boolean',
+          value: 'False',
+          error: null,
+        },
+        ReentrancyType: {
+          ok: true,
+          type: 'Number',
+          value: '1',
+          error: null,
+        },
+      },
+    });
+
+    assert.strictEqual(normalized.props['ReentrancyType'].value, '0');
+  });
+
   test('serializes the curated writable properties', () => {
     const lines = buildWriteRequestLines({
       Description: 'new desc',
       EditMode: true,
       ReentrancyType: 2,
       PreferredExecSystem: 7,
-      FPWinBounds: '1,2,3,4',
+      FPWinTitle: 'Front Panel',
       FPWinIsFrontMost: true,
     });
 
@@ -117,8 +142,8 @@ suite('labviewRuntime.buildWriteRequestLines', () => {
       `set_ReentrancyType_val=${b64('2')}`,
       'set_PreferredExecSystem_type=Number',
       `set_PreferredExecSystem_val=${b64('7')}`,
-      'set_FPWinBounds_type=String',
-      `set_FPWinBounds_val=${b64('1,2,3,4')}`,
+      'set_FPWinTitle_type=String',
+      `set_FPWinTitle_val=${b64('Front Panel')}`,
       'set_FPWinIsFrontMost_type=Boolean',
       `set_FPWinIsFrontMost_val=${b64('1')}`,
     ]);
@@ -128,6 +153,9 @@ suite('labviewRuntime.buildWriteRequestLines', () => {
     assert.throws(() => buildWriteRequestLines({ PrintHeader: 'x' }));
     assert.throws(() => buildWriteRequestLines({ Priority: 2 }));
     assert.throws(() => buildWriteRequestLines({ Name: 'renamed.vi' }));
+    assert.throws(() => buildWriteRequestLines({ RevisionNumber: '42' }));
+    assert.throws(() => buildWriteRequestLines({ FPState: 1 }));
+    assert.throws(() => buildWriteRequestLines({ FPWinBounds: '1,2,3,4' }));
     assert.throws(() => buildWriteRequestLines({ HistoryText: 'legacy' }));
     assert.throws(() => buildWriteRequestLines({ ExecPriority: 3 }));
   });

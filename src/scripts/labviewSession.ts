@@ -19,7 +19,7 @@ export interface LabVIEWSessionTargetOptions {
 }
 
 export interface LabVIEWSessionRequest {
-  command: 'read-props' | 'write-props' | 'export-panels';
+  command: 'read-props' | 'write-props' | 'export-panels' | 'probe-session';
   viPath: string;
   requestPath?: string;
   fpOutputPath?: string;
@@ -86,6 +86,28 @@ export async function requestLabVIEWSession(
 
   try {
     return await session.request(request);
+  } catch (error) {
+    session.dispose(true);
+    sessionPool.delete(key);
+    throw error;
+  }
+}
+
+export async function probeLabVIEWSession(
+  options: LabVIEWSessionTargetOptions,
+  viPath = '',
+): Promise<string | null> {
+  const key = buildLabVIEWSessionKey(options);
+  const session = sessionPool.get(key);
+  if (!session) {
+    return null;
+  }
+
+  try {
+    return await session.request({
+      command: 'probe-session',
+      viPath,
+    });
   } catch (error) {
     session.dispose(true);
     sessionPool.delete(key);

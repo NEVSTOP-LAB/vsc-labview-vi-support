@@ -104,7 +104,6 @@ Dim writableMeta
 Set writableMeta = CreateObject("Scripting.Dictionary")
 writableMeta.CompareMode = 1 ' textual
 writableMeta.Add "Description",       "String|vi"
-writableMeta.Add "RevisionNumber",    "String|vi"
 writableMeta.Add "EditMode",          "Boolean|vi"
 writableMeta.Add "RunOnOpen",         "Boolean|vi"
 writableMeta.Add "PreferredExecSystem", "Number|vi"
@@ -114,8 +113,6 @@ writableMeta.Add "AllowDebugging",    "Boolean|vi"
 writableMeta.Add "IsReentrant",       "Boolean|vi"
 writableMeta.Add "ReentrancyType",    "Number|vi"
 writableMeta.Add "CloseFPAfterCall",  "Boolean|vi"
-writableMeta.Add "FPState",           "Number|vi"
-writableMeta.Add "FPWinBounds",       "String|vi"
 writableMeta.Add "FPWinTitle",        "String|vi"
 writableMeta.Add "FPRunTransparently", "Boolean|vi"
 writableMeta.Add "FPTransparency",    "Number|vi"
@@ -357,7 +354,6 @@ End Sub
 Sub AssignProp(ByRef obj, ByVal propName, ByVal propType, ByVal newVal)
     Select Case propName
         Case "Description"        : obj.Description       = CStr(newVal)
-        Case "RevisionNumber"     : obj.RevisionNumber    = CStr(newVal)
         Case "EditMode"           : obj.EditMode          = CoerceBool(newVal)
         Case "RunOnOpen"          : obj.RunOnOpen         = CoerceBool(newVal)
         Case "PreferredExecSystem": obj.PreferredExecSystem = CLng(newVal)
@@ -367,8 +363,6 @@ Sub AssignProp(ByRef obj, ByVal propName, ByVal propType, ByVal newVal)
         Case "IsReentrant"        : obj.IsReentrant       = CoerceBool(newVal)
         Case "ReentrancyType"     : obj.ReentrancyType    = CLng(newVal)
         Case "CloseFPAfterCall"   : obj.CloseFPAfterCall  = CoerceBool(newVal)
-        Case "FPState"            : obj.FPState           = CLng(newVal)
-        Case "FPWinBounds"        : obj.FPWinBounds       = CoerceBounds(newVal)
         Case "FPWinTitle"         : obj.FPWinTitle        = CStr(newVal)
         Case "FPRunTransparently" : obj.FPRunTransparently = CoerceBool(newVal)
         Case "FPTransparency"     : obj.FPTransparency    = CLng(newVal)

@@ -21,7 +21,7 @@
   // -------------------------------------------------------------------------
   // State
   // -------------------------------------------------------------------------
-  /** @type {Record<string, {original: string|null, current: string, type: string, writable: boolean, accessMode?: string, editing?: boolean}>} */
+  /** @type {Record<string, {original: string|null, current: string, type: string, writable: boolean, accessMode?: string, editing?: boolean, tdRw?: HTMLTableCellElement, tdVal?: HTMLTableCellElement, entry?: any}>} */
   const propRows = {};
   let viewMode = 'table-only';   // 'both' | 'table-only' | 'preview-only'
   let previewMode = 'both';      // 'fp' | 'bd' | 'both'
@@ -41,6 +41,32 @@
 
   // Enum metadata for known number-typed properties (mirrors read_vi_props.py).
   const NUMBER_ENUMS = {
+    VIType: [
+      { value: 0, label: '0 (无效的 VI 类型)' },
+      { value: 1, label: '1 (标准 VI)' },
+      { value: 2, label: '2 (控件 VI)' },
+      { value: 3, label: '3 (全局 VI)' },
+      { value: 4, label: '4 (多态 VI)' },
+      { value: 5, label: '5 (配置 VI)' },
+      { value: 6, label: '6 (子系统 VI)' },
+      { value: 7, label: '7 (外观 VI)' },
+      { value: 8, label: '8 (方法 VI)' },
+      { value: 9, label: '9 (状态图 VI)' },
+    ],
+    ExecState: [
+      { value: 0, label: '0 (未初始化)' },
+      { value: 1, label: '1 (空闲)' },
+      { value: 2, label: '2 (运行中)' },
+      { value: 3, label: '3 (已暂停)' },
+      { value: 4, label: '4 (单步执行)' },
+      { value: 5, label: '5 (保留过渡状态)' },
+    ],
+    FPState: [
+      { value: 0, label: '0 (标准)' },
+      { value: 1, label: '1 (最小化)' },
+      { value: 2, label: '2 (最大化)' },
+      { value: 3, label: '3 (隐藏)' },
+    ],
     PreferredExecSystem: [
       { value: 1, label: '1 (用户界面)' },
       { value: 2, label: '2 (标准)' },
@@ -49,6 +75,16 @@
       { value: 5, label: '5 (其他 1)' },
       { value: 6, label: '6 (其他 2)' },
       { value: 7, label: '7 (与调用者相同)' },
+    ],
+    ReentrancyType: [
+      { value: 0, label: '0 (不可重入)' },
+      { value: 1, label: '1 (独立副本重入)' },
+      { value: 2, label: '2 (共享副本重入)' },
+    ],
+    WindowState: [
+      { value: 0, label: '0 (正常)' },
+      { value: 1, label: '1 (最小化)' },
+      { value: 2, label: '2 (最大化)' },
     ],
   };
   const DEFAULT_GROUP_LABELS = {
@@ -872,6 +908,20 @@
     tr.classList.toggle('dirty', slot.current !== slot.original);
   }
 
+  function restoreOtherEditableRows(activeName) {
+    for (const [name, slot] of Object.entries(propRows)) {
+      if (name === activeName || !slot.writable) {
+        continue;
+      }
+      if (slot.current === slot.original && !slot.editing) {
+        continue;
+      }
+      slot.current = slot.original;
+      slot.editing = false;
+      rerenderEditableRow(slot.tdRw, slot.tdVal, name, slot.entry);
+    }
+  }
+
   function renderAccessCell(td, name, tdVal, entry) {
     td.innerHTML = '';
     if (entry && entry.loaded === false) {
@@ -884,7 +934,12 @@
       return;
     }
     td.appendChild(createWritableAccessButton(!!slot.editing, () => {
-      slot.editing = !slot.editing;
+      if (slot.editing) {
+        slot.editing = false;
+      } else {
+        restoreOtherEditableRows(name);
+        slot.editing = true;
+      }
       rerenderEditableRow(td, tdVal, name, entry);
     }));
   }
@@ -1057,6 +1112,9 @@
               type: entry.type,
               writable: true,
               accessMode: entry.accessMode,
+              tdRw,
+              tdVal,
+              entry,
               editing: false,
             };
             rerenderEditableRow(tdRw, tdVal, name, entry);

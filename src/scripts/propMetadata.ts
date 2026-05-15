@@ -54,7 +54,7 @@ export const PROP_DEFINITIONS: Record<string, PropDefinition> = {
   OwningApp: defineProp('String', 'readonly', '所属应用', '拥有该 VI 的 Application 对象摘要。', 'general'),
   VIType: defineProp('Number', 'readonly', 'VI 类型', 'VI 类型枚举值，例如标准 VI、全局 VI 等。', 'general'),
   Description: defineProp('String', 'readwrite', '说明', 'VI 的描述信息。', 'general'),
-  RevisionNumber: defineProp('String', 'readwrite', '修订版本号', '当前 VI 的修订版本号。', 'general'),
+  RevisionNumber: defineProp('String', 'readonly', '修订版本号', '当前 VI 的修订版本号。', 'general'),
   SavedVersion: defineProp('String', 'readonly', '侦测到的VI版本', '从 VI 文件头侦测到的保存版本，不通过 COM 读取。', 'general', 'static'),
 
   EditMode: defineProp('Boolean', 'readwrite', '编辑模式', '设置 VI 打开时为编辑模式或运行模式。', 'execution'),
@@ -68,8 +68,8 @@ export const PROP_DEFINITIONS: Record<string, PropDefinition> = {
   ReentrancyType: defineProp('Number', 'readwrite', '重入类型', '可重入 VI 的重入类型枚举值。', 'execution'),
   CloseFPAfterCall: defineProp('Boolean', 'readwrite', '调用后关闭前面板', '设置 VI 运行后是否自动关闭前面板。', 'execution'),
 
-  FPState: defineProp('Number', 'readwrite', '前面板状态', '前面板窗口状态枚举值，例如标准、最小化、隐藏。', 'panel'),
-  FPWinBounds: defineProp('String', 'readwrite', '前面板窗口边界', '前面板窗口边界坐标，格式为 left,top,right,bottom。', 'panel'),
+  FPState: defineProp('Number', 'readonly', '前面板状态', '前面板窗口状态枚举值，例如标准、最小化、隐藏。', 'panel'),
+  FPWinBounds: defineProp('String', 'readonly', '前面板窗口边界', '前面板窗口边界坐标，格式为 left,top,right,bottom。', 'panel'),
   FPWinTitle: defineProp('String', 'readwrite', '前面板窗口标题', '前面板窗口标题栏文字。', 'panel'),
   FPRunTransparently: defineProp('Boolean', 'readwrite', '透明运行', '设置 VI 运行时窗口是否透明。', 'panel'),
   FPTransparency: defineProp('Number', 'readwrite', '窗口透明度', '设置窗口透明度级别，范围通常为 0-100。', 'panel'),

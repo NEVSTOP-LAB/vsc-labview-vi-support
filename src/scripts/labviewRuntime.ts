@@ -12,6 +12,7 @@ import {
 import { decorateProps, WRITABLE_PROP_TYPES } from './propMetadata';
 import type { ScriptPaths } from './scriptPaths';
 import {
+  probeLabVIEWSession,
   requestLabVIEWSession,
 } from './labviewSession';
 import {
@@ -118,6 +119,27 @@ export function buildWriteRequestLines(updates: Record<string, unknown>): string
   return lines;
 }
 
+export function normalizePropsEnvelope(envelope: PropsJsonEnvelope): PropsJsonEnvelope {
+  const isReentrant = envelope.props['IsReentrant'];
+  const reentrancyType = envelope.props['ReentrancyType'];
+  if (!isFalseBooleanEntry(isReentrant) || !reentrancyType?.ok) {
+    return envelope;
+  }
+  if (reentrancyType.value === '0') {
+    return envelope;
+  }
+  return {
+    ...envelope,
+    props: {
+      ...envelope.props,
+      ReentrancyType: {
+        ...reentrancyType,
+        value: '0',
+      },
+    },
+  };
+}
+
 export async function exportViPanelImage(
   viPath: string,
   panel: 'fp' | 'bd',
@@ -215,6 +237,30 @@ export async function readViProps(
     throw new Error(response.reason || 'Read props worker failed.');
   }
   return toPropsEnvelope(absViPath, response);
+}
+
+export async function hasReusableLabVIEWConnection(
+  viPath: string,
+  scripts: ScriptPaths,
+): Promise<boolean> {
+  ensureWindows();
+  try {
+    const absViPath = path.resolve(viPath);
+    const target = await resolveTargetInstallation(absViPath);
+    if (target.requestedVersion && !target.installation) {
+      return false;
+    }
+    const responseText = await probeLabVIEWSession(
+      buildSessionTargetOptions(target, scripts),
+      absViPath,
+    );
+    if (responseText === null) {
+      return false;
+    }
+    return parsePropsResponseText(responseText).ok;
+  } catch {
+    return false;
+  }
 }
 
 export async function readStaticViProps(viPath: string): Promise<PropsJsonEnvelope> {
@@ -660,7 +706,15 @@ async function toPropsEnvelope(
   if (typeof response.saveError === 'string') {
     envelope.saveError = response.saveError;
   }
-  return envelope;
+  return normalizePropsEnvelope(envelope);
+}
+
+function isFalseBooleanEntry(entry: PropEntry | undefined): boolean {
+  if (!entry?.ok) {
+    return false;
+  }
+  const value = String(entry.value ?? '').trim().toLowerCase();
+  return value === 'false' || value === '0';
 }
 
 async function runCommand(

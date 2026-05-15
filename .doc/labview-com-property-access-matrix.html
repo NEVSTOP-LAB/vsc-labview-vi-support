@@ -207,7 +207,7 @@
       <li>当前代码权限列直接对应 <code>readonly</code>、<code>readwrite</code>、<code>writeonly</code> 三种实现语义。</li>
       <li><code>SavedVersion</code> 是额外扩展出的静态属性，不属于参考文档中的 COM 读取项。</li>
       <li><code>OwningApp</code> 当前以“版本 | 安装目录”的摘要字符串展示，不直接暴露 COM 对象引用。</li>
-      <li><code>FPWinBounds</code> 当前以 <code>left,top,right,bottom</code> 字符串序列化读写。</li>
+      <li><code>FPWinBounds</code> 当前以 <code>left,top,right,bottom</code> 字符串序列化读取。</li>
       <li><code>FPWinIsFrontMost</code> 是只写项，当前表格中保留占位，但不会读回当前值。</li>
     </ul>
 
@@ -232,7 +232,7 @@
           <tr><td class="mono">OwningApp</td><td>只读</td><td>只读</td><td>String</td><td>动态</td><td class="status-match">一致</td><td>当前展示为应用版本与目录摘要字符串。</td></tr>
           <tr><td class="mono">VIType</td><td>只读</td><td>只读</td><td>Number</td><td>动态</td><td class="status-match">一致</td><td>当前返回枚举值。</td></tr>
           <tr><td class="mono">Description</td><td>读写</td><td>读写</td><td>String</td><td>动态</td><td class="status-match">一致</td><td>当前支持编辑与写回。</td></tr>
-          <tr><td class="mono">RevisionNumber</td><td>读写</td><td>读写</td><td>String</td><td>动态</td><td class="status-match">一致</td><td>当前按字符串处理。</td></tr>
+          <tr><td class="mono">RevisionNumber</td><td>读写</td><td>只读</td><td>String</td><td>动态</td><td class="status-diff">差异</td><td>当前实现收口为只读，仅展示 COM 读回值。</td></tr>
         </tbody>
       </table>
     </div>
@@ -281,8 +281,8 @@
           </tr>
         </thead>
         <tbody>
-          <tr><td class="mono">FPState</td><td>读写</td><td>读写</td><td>Number</td><td>动态</td><td class="status-match">一致</td><td>当前返回并写回枚举值。</td></tr>
-          <tr><td class="mono">FPWinBounds</td><td>读写</td><td>读写</td><td>String</td><td>动态</td><td class="status-match">一致</td><td>当前以 <code>left,top,right,bottom</code> 字符串序列化。</td></tr>
+          <tr><td class="mono">FPState</td><td>读写</td><td>只读</td><td>Number</td><td>动态</td><td class="status-diff">差异</td><td>当前实现收口为只读，仅返回前面板状态枚举值。</td></tr>
+          <tr><td class="mono">FPWinBounds</td><td>读写</td><td>只读</td><td>String</td><td>动态</td><td class="status-diff">差异</td><td>当前以 <code>left,top,right,bottom</code> 字符串序列化读取。</td></tr>
           <tr><td class="mono">FPWinTitle</td><td>读写</td><td>读写</td><td>String</td><td>动态</td><td class="status-match">一致</td><td>当前支持写回。</td></tr>
           <tr><td class="mono">FPRunTransparently</td><td>读写</td><td>读写</td><td>Boolean</td><td>动态</td><td class="status-match">一致</td><td>当前支持写回。</td></tr>
           <tr><td class="mono">FPTransparency</td><td>读写</td><td>读写</td><td>Number</td><td>动态</td><td class="status-match">一致</td><td>当前按数值写回。</td></tr>

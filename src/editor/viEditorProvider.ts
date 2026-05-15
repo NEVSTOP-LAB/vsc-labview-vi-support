@@ -7,7 +7,9 @@ import { getCacheRoot } from '../cache/cacheDirectory';
 import { ViCache, type CacheEntry } from '../cache/viCache';
 import {
   exportViPanelImages,
+  hasReusableLabVIEWConnection,
   type LabVIEWRuntimeOptions,
+  normalizePropsEnvelope,
   readStaticViProps,
   readViProps,
   writeViProps,
@@ -229,6 +231,8 @@ interface OutboundState {
 class ViEditorSession {
   private currentEntry: CacheEntry | null = null;
   private disposed = false;
+  private readonly disposables: vscode.Disposable[] = [];
+  private fileChangeTimer: NodeJS.Timeout | null = null;
   /** 保证任意时刻只有一个 loadAndPush 在运行（防止 initialize + ready 并发触发）。 */
   private _loadChain: Promise<void> = Promise.resolve();
   /** 链尾是否已有待执行的非强制刷新任务（用于跳过重复的 ready 触发）。 */
@@ -244,10 +248,28 @@ class ViEditorSession {
     private readonly runtimeOptions: LabVIEWRuntimeOptions,
     private readonly getViewMode: () => ViewMode,
     private readonly onViewModeChange: (viewMode: ViewMode) => Promise<void>,
-  ) {}
+  ) {
+    const filePattern = new vscode.RelativePattern(
+      path.dirname(this.document.uri.fsPath),
+      path.basename(this.document.uri.fsPath),
+    );
+    const watcher = vscode.workspace.createFileSystemWatcher(filePattern);
+    const scheduleReload = () => this.scheduleExternalFileReload();
+    this.disposables.push(
+      watcher,
+      watcher.onDidChange(scheduleReload),
+      watcher.onDidCreate(scheduleReload),
+      watcher.onDidDelete(scheduleReload),
+    );
+  }
 
   public dispose(): void {
     this.disposed = true;
+    if (this.fileChangeTimer) {
+      clearTimeout(this.fileChangeTimer);
+      this.fileChangeTimer = null;
+    }
+    vscode.Disposable.from(...this.disposables).dispose();
   }
 
   public async initialize(): Promise<void> {
@@ -340,6 +362,22 @@ class ViEditorSession {
       .catch(() => { /* loadDynamicProps errors are handled above; chain must not reject */ });
   }
 
+  private scheduleExternalFileReload(): void {
+    if (this.disposed) {
+      return;
+    }
+    if (this.fileChangeTimer) {
+      clearTimeout(this.fileChangeTimer);
+    }
+    // LabVIEW 保存时可能会产生一串紧邻的文件系统事件；统一收敛到一次重载。
+    this.fileChangeTimer = setTimeout(() => {
+      this.fileChangeTimer = null;
+      if (!this.disposed) {
+        this._enqueueLoad();
+      }
+    }, 250);
+  }
+
   private async loadAndPush(forceRefresh = false): Promise<void> {
     const viPath = this.document.uri.fsPath;
     let entry: CacheEntry;
@@ -390,7 +428,8 @@ class ViEditorSession {
       }
     }
 
-    const initialLoading = this.buildLoadingState(entry, refreshDynamicProps);
+    let autoLoadDynamicProps = await this.shouldAutoLoadDynamicProps(cachedProps);
+    const initialLoading = this.buildLoadingState(entry, refreshDynamicProps || autoLoadDynamicProps);
 
     // Initial state: whatever is on disk right now.
     await this.pushState({
@@ -402,7 +441,21 @@ class ViEditorSession {
     });
 
     await this.exportPanels(entry, { fp: initialLoading.fp, bd: initialLoading.bd });
-    if (refreshDynamicProps) {
+    let shouldFetchDynamicProps = refreshDynamicProps || autoLoadDynamicProps;
+    if (!shouldFetchDynamicProps && !this.isDynamicPropsLoaded(cachedProps)) {
+      autoLoadDynamicProps = await this.shouldAutoLoadDynamicProps(cachedProps);
+      shouldFetchDynamicProps = autoLoadDynamicProps;
+      if (shouldFetchDynamicProps) {
+        await this.pushState({
+          fpImage: this.cache.has(entry, 'fpImage') ? entry.artifacts.fpImage : null,
+          bdImage: this.cache.has(entry, 'bdImage') ? entry.artifacts.bdImage : null,
+          props: cachedProps,
+          errors: [],
+          loading: { fp: false, bd: false, props: true },
+        });
+      }
+    }
+    if (shouldFetchDynamicProps) {
       const refreshed = await this.fetchProps(entry);
       if (refreshed) {
         cachedProps = refreshed;
@@ -463,6 +516,13 @@ class ViEditorSession {
       errors: [],
       loading: { fp: false, bd: false, props: false },
     });
+  }
+
+  private async shouldAutoLoadDynamicProps(cachedProps: PropsJsonEnvelope | null): Promise<boolean> {
+    if (this.isDynamicPropsLoaded(cachedProps)) {
+      return false;
+    }
+    return hasReusableLabVIEWConnection(this.document.uri.fsPath, this.scripts);
   }
 
   private async exportPanels(
@@ -633,7 +693,7 @@ class ViEditorSession {
     // 先做一次结构校验；只要缓存结构仍兼容，就保留已有值，
     // 再按当前元数据补齐缺失条目并回写，避免插件升级时整包失效。
     try {
-      const cached = parseCachedPropsJson(JSON.stringify(raw));
+      const cached = normalizePropsEnvelope(parseCachedPropsJson(JSON.stringify(raw)));
       return await this.ensureStaticProps(entry, cached);
     } catch {
       return null;
