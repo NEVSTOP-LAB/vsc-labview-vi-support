@@ -15,13 +15,13 @@ function getTrySaveFrontPanelImageBody(scriptText: string): string {
 
 suite('panel image workers', () => {
   for (const fileName of ['labview_session_host.vbs', 'save_vi_panel_image_worker.vbs']) {
-    test(`${fileName} exports the front panel via HTML export only`, () => {
+    test(`${fileName} falls back to GetPanelImage when HTML export misses fp image`, () => {
       const body = getTrySaveFrontPanelImageBody(readWorkerScript(fileName));
 
       assert.ok(body.includes('EnsureHtmlExport'));
       assert.ok(body.includes('FindExportedImage(imageDir, "p.png")'));
-      assert.ok(!body.includes('TryCaptureFrontPanelPng'));
-      assert.ok(!body.includes('GetPanelImage failed'));
+      assert.ok(body.includes('TryCaptureFrontPanelPng(viRef, finalOutputPath, exportRoot, errorMessage)'));
+      assert.ok(!body.includes('ShouldTryFrontPanelCaptureFallback()'));
     });
   }
 });

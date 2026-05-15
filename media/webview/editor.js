@@ -126,6 +126,28 @@
   document.body.appendChild(sourceTooltip);
   let activeTooltipTarget = null;
 
+  function readInitialPropsEnvelope() {
+    const node = document.getElementById('initial-props-envelope');
+    if (!(node instanceof HTMLScriptElement)) {
+      return null;
+    }
+    const text = node.textContent || '';
+    if (!text.trim()) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(text);
+      if (!parsed || typeof parsed !== 'object' || !parsed.props || typeof parsed.props !== 'object') {
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  const initialPropsEnvelope = readInitialPropsEnvelope();
+
   const panes = {
     fp: document.querySelector('.image-pane[data-pane="fp"]'),
     bd: document.querySelector('.image-pane[data-pane="bd"]'),
@@ -1225,6 +1247,12 @@
   // -------------------------------------------------------------------------
   // Init
   // -------------------------------------------------------------------------
+  if (initialPropsEnvelope && initialPropsEnvelope.props) {
+    currentPropsEnvelope = initialPropsEnvelope;
+    currentLoadingState = { fp: false, bd: false, props: true };
+    renderTable(initialPropsEnvelope.props);
+  }
   setViewMode(viewMode, { persist: false });
+  updateDynamicUi();
   vscode.postMessage({ type: 'ready' });
 })();

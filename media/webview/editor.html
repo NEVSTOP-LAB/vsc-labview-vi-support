@@ -91,34 +91,13 @@
                 <th>说明</th>
               </tr>
             </thead>
-            <tbody id="props-tbody">
-              <tr class="loading-row">
-                <td><div class="loading-line loading-line-name"></div></td>
-                <td><div class="loading-line loading-line-type"></div></td>
-                <td><div class="loading-line loading-line-access"></div></td>
-                <td><div class="loading-line loading-line-value"></div></td>
-                <td><div class="loading-line loading-line-desc"></div></td>
-              </tr>
-              <tr class="loading-row">
-                <td><div class="loading-line loading-line-name"></div></td>
-                <td><div class="loading-line loading-line-type"></div></td>
-                <td><div class="loading-line loading-line-access"></div></td>
-                <td><div class="loading-line loading-line-value"></div></td>
-                <td><div class="loading-line loading-line-desc"></div></td>
-              </tr>
-              <tr class="loading-row">
-                <td><div class="loading-line loading-line-name"></div></td>
-                <td><div class="loading-line loading-line-type"></div></td>
-                <td><div class="loading-line loading-line-access"></div></td>
-                <td><div class="loading-line loading-line-value"></div></td>
-                <td><div class="loading-line loading-line-desc"></div></td>
-              </tr>
-            </tbody>
+            <tbody id="props-tbody">{{INITIAL_PROPS_ROWS}}</tbody>
           </table>
         </div>
       </div>
     </div>
 
+    <script id="initial-props-envelope" type="application/json">{{INITIAL_PROPS_JSON}}</script>
     <script nonce="{{NONCE}}" src="{{SCRIPT_URI}}"></script>
   </body>
 </html>

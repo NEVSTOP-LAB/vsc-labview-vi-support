@@ -198,37 +198,48 @@ Function TrySaveFrontPanelImage(ByRef viRef, ByVal finalOutputPath, ByVal export
     Dim fso
     Dim sourcePath
     Dim exportError
+    Dim htmlErrorMessage
 
     TrySaveFrontPanelImage = False
     errorMessage = ""
     exportError = ""
+    htmlErrorMessage = ""
     Set fso = CreateObject("Scripting.FileSystemObject")
 
-    ' GetPanelImage can hard-crash some LabVIEW builds before VBScript gets a recoverable COM error.
     If Not EnsureHtmlExport(viRef, htmlPath, imageDir, htmlExported, exportError) Then
-        errorMessage = exportError
+        htmlErrorMessage = exportError
+    Else
+        sourcePath = FindExportedImage(imageDir, "p.png")
+        If Len(sourcePath) > 0 Then
+            On Error Resume Next
+            Err.Clear
+            EnsureParentFolder finalOutputPath
+            fso.CopyFile sourcePath, finalOutputPath, True
+            If Err.Number <> 0 Then
+                errorMessage = "HTML export copy failed: " & Err.Description
+                Err.Clear
+                On Error GoTo 0
+                Exit Function
+            End If
+            On Error GoTo 0
+
+            TrySaveFrontPanelImage = True
+            Exit Function
+        End If
+
+        htmlErrorMessage = "LabVIEW HTML export did not produce *p.png."
+    End If
+
+    If TryCaptureFrontPanelPng(viRef, finalOutputPath, exportRoot, errorMessage) Then
+        TrySaveFrontPanelImage = True
         Exit Function
     End If
 
-    sourcePath = FindExportedImage(imageDir, "p.png")
-    If Len(sourcePath) = 0 Then
-        errorMessage = "LabVIEW HTML export did not produce *p.png."
-        Exit Function
+    If Len(errorMessage) = 0 Then
+        errorMessage = htmlErrorMessage
+    ElseIf Len(htmlErrorMessage) > 0 Then
+        errorMessage = htmlErrorMessage & " Fallback failed: " & errorMessage
     End If
-
-    On Error Resume Next
-    Err.Clear
-    EnsureParentFolder finalOutputPath
-    fso.CopyFile sourcePath, finalOutputPath, True
-    If Err.Number <> 0 Then
-        errorMessage = "HTML export copy failed: " & Err.Description
-        Err.Clear
-        On Error GoTo 0
-        Exit Function
-    End If
-    On Error GoTo 0
-
-    TrySaveFrontPanelImage = True
 End Function
 
 Function EnsureHtmlExport(ByRef viRef, ByVal htmlPath, ByVal imageDir, ByRef alreadyExported, ByRef errorMessage)
@@ -934,17 +945,20 @@ Sub ConnectLabVIEW()
         End If
 
         On Error Resume Next
+        Set app = Nothing
         Err.Clear
-        Set app = CreateObject("LabVIEW.Application")
-        If Err.Number = 0 Then
-            Dim appDir
-            Dim appVer
-            appDir = SafeGetAppDirectory(app)
-            appVer = SafeGetAppVersion(app)
-            connectedDirectory = appDir
-            connectedVersion = appVer
+        If Len(targetExe) > 0 And Not CanUseGenericComActivationForTarget(targetExe) Then
+            createErr = "Timed out waiting for the requested LabVIEW target to register for COM reuse."
+        Else
+            Set app = CreateObject("LabVIEW.Application")
+            If Err.Number = 0 Then
+                Dim appDir
+                Dim appVer
+                appDir = SafeGetAppDirectory(app)
+                appVer = SafeGetAppVersion(app)
+                connectedDirectory = appDir
+                connectedVersion = appVer
 
-            If Len(targetExe) = 0 Then
                 If Len(expectedVersion) = 0 And Len(expectedDirectory) = 0 Then
                     selection = "created-default-labview-application"
                     reason = "No reusable LabVIEW instance was available. Created a new automation instance."
@@ -958,17 +972,9 @@ Sub ConnectLabVIEW()
                 lastMismatch = "Connected to " & DescribeApp(appDir, appVer) & ", which does not match the requested target."
                 ReleaseComObject app
             Else
-                If MatchesTarget(appDir, appVer, expectedDirNorm, expectedVersion) Then
-                    selection = "created-target-labview-application"
-                    reason = "Created or attached a LabVIEW automation instance for the requested installation."
-                    Exit Sub
-                End If
-                lastMismatch = "Connected to " & DescribeApp(appDir, appVer) & ", which does not match the requested target installation."
-                ReleaseComObject app
+                createErr = "CreateObject failed: " & Err.Description
+                Err.Clear
             End If
-        Else
-            createErr = "CreateObject failed: " & Err.Description
-            Err.Clear
         End If
         On Error GoTo 0
 
@@ -1139,6 +1145,56 @@ Function SafeGetAppVersion(ByRef appRef)
     SafeGetAppVersion = CStr(appRef.Version)
     If Err.Number <> 0 Then SafeGetAppVersion = "" : Err.Clear
     On Error GoTo 0
+End Function
+
+Function CanUseGenericComActivationForTarget(ByVal exePath)
+    Dim shell
+    Dim clsid
+    Dim serverCommand
+
+    CanUseGenericComActivationForTarget = False
+    If Len(exePath) = 0 Then
+        CanUseGenericComActivationForTarget = True
+        Exit Function
+    End If
+
+    On Error Resume Next
+    Set shell = CreateObject("WScript.Shell")
+    clsid = CStr(shell.RegRead("HKEY_CLASSES_ROOT\LabVIEW.Application\CLSID\"))
+    If Err.Number <> 0 Then Err.Clear : On Error GoTo 0 : Exit Function
+
+    serverCommand = CStr(shell.RegRead("HKEY_CLASSES_ROOT\CLSID\" & clsid & "\LocalServer32\"))
+    If Err.Number <> 0 Then Err.Clear : On Error GoTo 0 : Exit Function
+    On Error GoTo 0
+
+    CanUseGenericComActivationForTarget = (NormalizePath(ExtractExecutablePath(serverCommand)) = NormalizePath(exePath))
+End Function
+
+Function ExtractExecutablePath(ByVal commandText)
+    Dim trimmed
+    Dim quotePos
+    Dim exePos
+
+    trimmed = Trim(CStr(commandText))
+    If Len(trimmed) = 0 Then
+        ExtractExecutablePath = ""
+        Exit Function
+    End If
+
+    If Left(trimmed, 1) = """" Then
+        quotePos = InStr(2, trimmed, """")
+        If quotePos > 1 Then
+            ExtractExecutablePath = Mid(trimmed, 2, quotePos - 2)
+            Exit Function
+        End If
+    End If
+
+    exePos = InStr(1, LCase(trimmed), ".exe")
+    If exePos > 0 Then
+        ExtractExecutablePath = Left(trimmed, exePos + 3)
+    Else
+        ExtractExecutablePath = trimmed
+    End If
 End Function
 
 Function NormalizePath(ByVal pathText)
