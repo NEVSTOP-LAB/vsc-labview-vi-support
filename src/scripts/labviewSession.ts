@@ -4,11 +4,15 @@ import {
   type ChildProcessWithoutNullStreams,
   type SpawnOptions,
 } from 'child_process';
+import { createLabVIEWAutomationGate } from './labviewAutomationGate';
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_REQUEST_TIMEOUT_SECONDS = 45;
 const RESPONSE_BEGIN = '__LABVIEW_RESPONSE_BEGIN__';
 const RESPONSE_END = '__LABVIEW_RESPONSE_END__';
+
+const sessionPool = new Map<string, LabVIEWSessionHost>();
+const automationGate = createLabVIEWAutomationGate();
 
 export interface LabVIEWSessionTargetOptions {
   scriptHost: string;
@@ -36,8 +40,6 @@ interface PendingResponse {
   reject: (error: Error) => void;
 }
 
-const sessionPool = new Map<string, LabVIEWSessionHost>();
-
 export function buildLabVIEWSessionKey(options: LabVIEWSessionTargetOptions): string {
   return [
     normalizePathKey(options.scriptHost),
@@ -56,16 +58,16 @@ export function buildLabVIEWSessionRequestLines(request: LabVIEWSessionRequest):
   const lines = [
     `command=${request.command}`,
     `timeoutSeconds=${timeoutSeconds}`,
-    `viPath=${request.viPath}`,
+    `viPath_b64=${encodeBase64Utf8(request.viPath)}`,
   ];
   if (request.requestPath) {
-    lines.push(`requestPath=${request.requestPath}`);
+    lines.push(`requestPath_b64=${encodeBase64Utf8(request.requestPath)}`);
   }
   if (request.fpOutputPath) {
-    lines.push(`fpOutputPath=${request.fpOutputPath}`);
+    lines.push(`fpOutputPath_b64=${encodeBase64Utf8(request.fpOutputPath)}`);
   }
   if (request.bdOutputPath) {
-    lines.push(`bdOutputPath=${request.bdOutputPath}`);
+    lines.push(`bdOutputPath_b64=${encodeBase64Utf8(request.bdOutputPath)}`);
   }
   if (typeof request.save === 'boolean') {
     lines.push(`save=${request.save ? '1' : '0'}`);
@@ -73,24 +75,30 @@ export function buildLabVIEWSessionRequestLines(request: LabVIEWSessionRequest):
   return lines;
 }
 
+function encodeBase64Utf8(value: string): string {
+  return Buffer.from(value, 'utf8').toString('base64');
+}
+
 export async function requestLabVIEWSession(
   options: LabVIEWSessionTargetOptions,
   request: LabVIEWSessionRequest,
 ): Promise<string> {
-  const key = buildLabVIEWSessionKey(options);
-  let session = sessionPool.get(key);
-  if (!session) {
-    session = new LabVIEWSessionHost(options);
-    sessionPool.set(key, session);
-  }
+  return automationGate.run(async () => {
+    const key = buildLabVIEWSessionKey(options);
+    let session = sessionPool.get(key);
+    if (!session) {
+      session = new LabVIEWSessionHost(options);
+      sessionPool.set(key, session);
+    }
 
-  try {
-    return await session.request(request);
-  } catch (error) {
-    session.dispose(true);
-    sessionPool.delete(key);
-    throw error;
-  }
+    try {
+      return await session.request(request);
+    } catch (error) {
+      session.dispose(true);
+      sessionPool.delete(key);
+      throw error;
+    }
+  });
 }
 
 export async function probeLabVIEWSession(
@@ -98,32 +106,34 @@ export async function probeLabVIEWSession(
   viPath = '',
   allowCreate = false,
 ): Promise<string | null> {
-  const key = buildLabVIEWSessionKey(options);
-  let session = sessionPool.get(key);
-  const created = !session;
-  if (!session) {
-    if (!allowCreate) {
-      return null;
+  return automationGate.run(async () => {
+    const key = buildLabVIEWSessionKey(options);
+    let session = sessionPool.get(key);
+    const created = !session;
+    if (!session) {
+      if (!allowCreate) {
+        return null;
+      }
+      session = new LabVIEWSessionHost(options);
+      sessionPool.set(key, session);
     }
-    session = new LabVIEWSessionHost(options);
-    sessionPool.set(key, session);
-  }
 
-  try {
-    const response = await session.request({
-      command: 'probe-session',
-      viPath,
-    });
-    if (created && !isOkResponse(response)) {
-      session.dispose(false);
+    try {
+      const response = await session.request({
+        command: 'probe-session',
+        viPath,
+      });
+      if (created && !isOkResponse(response)) {
+        session.dispose(false);
+        sessionPool.delete(key);
+      }
+      return response;
+    } catch (error) {
+      session.dispose(true);
       sessionPool.delete(key);
+      throw error;
     }
-    return response;
-  } catch (error) {
-    session.dispose(true);
-    sessionPool.delete(key);
-    throw error;
-  }
+  });
 }
 
 export function disposeLabVIEWSessions(): void {

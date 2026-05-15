@@ -247,7 +247,7 @@ Sub ReadAllProperties(ByRef stream)
     WritePropLine stream, "FPResizable", "Boolean", ok, val, errMsg
 
     val = "" : Err.Clear
-    val = CStr(vi.FPMinimizable)
+    val = CStr(vi.FPMinimizeable)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
     WritePropLine stream, "FPMinimizable", "Boolean", ok, val, errMsg
 
@@ -426,33 +426,37 @@ Sub ConnectLabVIEW()
         On Error Resume Next
         Set app = Nothing
         Err.Clear
-        Set app = CreateObject("LabVIEW.Application")
-
-        If Err.Number <> 0 Then
-            createErr = "CreateObject failed: " & Err.Description
-            Err.Clear
+        If Len(targetExe) > 0 And Not CanUseGenericComActivationForTarget(targetExe) Then
+            createErr = "Timed out waiting for the requested LabVIEW target to register for COM reuse."
         Else
-            appDir = SafeGetAppDirectory(app)
-            appVer = SafeGetAppVersion(app)
-            connectedDirectory = appDir
-            connectedVersion   = appVer
+            Set app = CreateObject("LabVIEW.Application")
 
-            If AppMatches(appDir, appVer) Then
-                On Error GoTo 0
-                If Len(targetExe) > 0 Then
-                    selection = "created-target-labview-application"
-                    reason    = "Created or attached a LabVIEW automation instance for the requested installation."
-                Else
-                    selection = "created-default-labview-application"
-                    reason    = "No reusable LabVIEW instance was available. Created a new automation instance."
+            If Err.Number <> 0 Then
+                createErr = "CreateObject failed: " & Err.Description
+                Err.Clear
+            Else
+                appDir = SafeGetAppDirectory(app)
+                appVer = SafeGetAppVersion(app)
+                connectedDirectory = appDir
+                connectedVersion   = appVer
+
+                If AppMatches(appDir, appVer) Then
+                    On Error GoTo 0
+                    If Len(targetExe) > 0 Then
+                        selection = "created-target-labview-application"
+                        reason    = "Created or attached a LabVIEW automation instance for the requested installation."
+                    Else
+                        selection = "created-default-labview-application"
+                        reason    = "No reusable LabVIEW instance was available. Created a new automation instance."
+                    End If
+                    Exit Sub
                 End If
-                Exit Sub
-            End If
 
-            lastMismatch = "Connected to " & DescribeApp(appDir, appVer) & _
-                           ", which does not match the requested target."
-            ReleaseComObject app
-            Set app = Nothing
+                lastMismatch = "Connected to " & DescribeApp(appDir, appVer) & _
+                               ", which does not match the requested target."
+                ReleaseComObject app
+                Set app = Nothing
+            End If
         End If
         On Error GoTo 0
 
@@ -682,6 +686,56 @@ Function SafeGetAppVersion(ByRef appRef)
     Err.Clear
     SafeGetAppVersion = CStr(appRef.Version)
     If Err.Number <> 0 Then SafeGetAppVersion = "" : Err.Clear
+End Function
+
+Function CanUseGenericComActivationForTarget(ByVal exePath)
+    Dim shell
+    Dim clsid
+    Dim serverCommand
+
+    CanUseGenericComActivationForTarget = False
+    If Len(exePath) = 0 Then
+        CanUseGenericComActivationForTarget = True
+        Exit Function
+    End If
+
+    On Error Resume Next
+    Set shell = CreateObject("WScript.Shell")
+    clsid = CStr(shell.RegRead("HKEY_CLASSES_ROOT\LabVIEW.Application\CLSID\"))
+    If Err.Number <> 0 Then Err.Clear : On Error GoTo 0 : Exit Function
+
+    serverCommand = CStr(shell.RegRead("HKEY_CLASSES_ROOT\CLSID\" & clsid & "\LocalServer32\"))
+    If Err.Number <> 0 Then Err.Clear : On Error GoTo 0 : Exit Function
+    On Error GoTo 0
+
+    CanUseGenericComActivationForTarget = (NormalizePath(ExtractExecutablePath(serverCommand)) = NormalizePath(exePath))
+End Function
+
+Function ExtractExecutablePath(ByVal commandText)
+    Dim trimmed
+    Dim quotePos
+    Dim exePos
+
+    trimmed = Trim(CStr(commandText))
+    If Len(trimmed) = 0 Then
+        ExtractExecutablePath = ""
+        Exit Function
+    End If
+
+    If Left(trimmed, 1) = """" Then
+        quotePos = InStr(2, trimmed, """")
+        If quotePos > 1 Then
+            ExtractExecutablePath = Mid(trimmed, 2, quotePos - 2)
+            Exit Function
+        End If
+    End If
+
+    exePos = InStr(1, LCase(trimmed), ".exe")
+    If exePos > 0 Then
+        ExtractExecutablePath = Left(trimmed, exePos + 3)
+    Else
+        ExtractExecutablePath = trimmed
+    End If
 End Function
 
 ' ===========================================================================
