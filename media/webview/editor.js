@@ -277,6 +277,71 @@
     return Math.max(minPanePx, Math.min(totalHeight - minPanePx, desiredHeight));
   }
 
+  function parsePixelSize(value) {
+    const parsed = Number.parseFloat(value || '0');
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function getVisiblePreviewPanes() {
+    return Object.values(panes).filter((pane) => pane && !pane.classList.contains('hidden'));
+  }
+
+  function getPaneHeaderHeight() {
+    return getVisiblePreviewPanes().reduce((maxHeight, pane) => {
+      const header = pane.querySelector('.pane-header');
+      if (!(header instanceof HTMLElement)) {
+        return maxHeight;
+      }
+      return Math.max(maxHeight, header.getBoundingClientRect().height || 0);
+    }, 0);
+  }
+
+  function getSquareDistance(width, height) {
+    if (width <= 0 || height <= 0) {
+      return Number.POSITIVE_INFINITY;
+    }
+    return Math.abs(Math.log(width / height));
+  }
+
+  function choosePreviewLayoutDirection() {
+    const visiblePanes = getVisiblePreviewPanes();
+    if (!isPreviewVisible() || previewMode !== 'both' || visiblePanes.length < 2) {
+      return 'row';
+    }
+
+    const styles = window.getComputedStyle(imageArea);
+    const innerWidth = imageArea.clientWidth
+      - parsePixelSize(styles.paddingLeft)
+      - parsePixelSize(styles.paddingRight);
+    const innerHeight = imageArea.clientHeight
+      - parsePixelSize(styles.paddingTop)
+      - parsePixelSize(styles.paddingBottom);
+    if (innerWidth <= 0 || innerHeight <= 0) {
+      return 'row';
+    }
+
+    const columnGap = parsePixelSize(styles.columnGap || styles.gap);
+    const rowGap = parsePixelSize(styles.rowGap || styles.gap);
+    const headerHeight = getPaneHeaderHeight();
+
+    const horizontalViewportWidth = Math.max(0, (innerWidth - columnGap) / visiblePanes.length);
+    const horizontalViewportHeight = Math.max(0, innerHeight - headerHeight);
+    const verticalViewportWidth = Math.max(0, innerWidth);
+    const verticalViewportHeight = Math.max(0, (innerHeight - rowGap) / visiblePanes.length - headerHeight);
+
+    const horizontalDistance = getSquareDistance(horizontalViewportWidth, horizontalViewportHeight);
+    const verticalDistance = getSquareDistance(verticalViewportWidth, verticalViewportHeight);
+
+    return verticalDistance < horizontalDistance ? 'column' : 'row';
+  }
+
+  function applyPreviewPaneLayout() {
+    const direction = choosePreviewLayoutDirection();
+    const isVertical = direction === 'column';
+    imageArea.classList.toggle('image-area-vertical', isVertical);
+    imageArea.dataset.previewLayout = isVertical ? 'vertical' : 'horizontal';
+  }
+
   function applyMainLayout() {
     const previewVisible = isPreviewVisible();
     const tableVisible = isTableVisible();
@@ -289,12 +354,14 @@
     if (!previewVisible) {
       imageArea.style.flex = '';
       tableArea.style.flex = '1 1 100%';
+      applyPreviewPaneLayout();
       return;
     }
 
     if (!tableVisible) {
       imageArea.style.flex = '1 1 100%';
       tableArea.style.flex = '';
+      applyPreviewPaneLayout();
       return;
     }
 
@@ -303,6 +370,7 @@
     if (availableHeight <= 0) {
       imageArea.style.flex = '1 1 60%';
       tableArea.style.flex = '1 1 40%';
+      applyPreviewPaneLayout();
       return;
     }
 
@@ -314,6 +382,7 @@
     splitRatio = imageHeight / availableHeight;
     imageArea.style.flex = `0 0 ${imageHeight}px`;
     tableArea.style.flex = `0 0 ${tableHeight}px`;
+    applyPreviewPaneLayout();
   }
 
   function updateSplitRatioFromClientY(clientY) {
