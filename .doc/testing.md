@@ -53,7 +53,7 @@ npm test
 - `scripts/scriptPaths.ts`
 - `scripts/propsParser.ts`
 - `scripts/propMetadata.ts`
-- `labviewVersionStatus.ts` 中的 `buildStatusPresentation`
+- `scripts/labviewStatusPresentation.ts` 中的 `buildStatusPresentation`
 
 ### 已覆盖的集成场景
 
