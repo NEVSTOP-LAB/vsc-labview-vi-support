@@ -121,6 +121,9 @@
     "pretest:unit": "npm run compile-tests",
     "test:unit": "node node_modules/mocha/bin/mocha.js --ui tdd --reporter spec \"out/test/unit/**/*.test.js\""
   },
+  "overrides": {
+    "glob": "^10.5.0"
+  },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
