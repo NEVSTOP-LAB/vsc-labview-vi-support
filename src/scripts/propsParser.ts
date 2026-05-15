@@ -252,3 +252,21 @@ export function mergeStaticPropsIntoEnvelope(
     props,
   };
 }
+
+export function mergeUpdatedPropsIntoEnvelope(
+  envelope: PropsJsonEnvelope,
+  updates: PropsJsonEnvelope,
+): PropsJsonEnvelope {
+  return {
+    ...envelope,
+    viPath: updates.viPath || envelope.viPath,
+    lvVersion: updates.lvVersion ?? envelope.lvVersion,
+    dynamicPropsLoaded: updates.dynamicPropsLoaded ?? envelope.dynamicPropsLoaded,
+    saved: updates.saved,
+    saveError: updates.saveError,
+    props: {
+      ...envelope.props,
+      ...updates.props,
+    },
+  };
+}
