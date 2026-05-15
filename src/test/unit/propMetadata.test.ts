@@ -92,6 +92,7 @@ suite('propMetadata.decorateProps', () => {
       Object.keys(props).filter((name) => props[name].group === 'general').at(-1),
       'SavedVersion',
     );
+    assert.strictEqual(props['FPMinimizable'].loaded, false);
     assert.strictEqual(props['FPWinIsFrontMost'].loaded, true);
     assert.strictEqual(props['FPWinIsFrontMost'].value, null);
     assert.strictEqual(props['FPWinIsFrontMost'].accessMode, 'writeonly');

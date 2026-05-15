@@ -247,7 +247,7 @@ Sub ReadAllProperties(ByRef stream)
     WritePropLine stream, "FPResizable", "Boolean", ok, val, errMsg
 
     val = "" : Err.Clear
-    val = CStr(vi.FPMinimizable)
+    val = CStr(vi.FPMinimizeable)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
     WritePropLine stream, "FPMinimizable", "Boolean", ok, val, errMsg
 

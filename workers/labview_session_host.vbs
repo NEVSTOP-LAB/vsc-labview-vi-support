@@ -684,7 +684,7 @@ Function BuildReadPropsLines(ByRef viRef)
     AppendPropLine responseText, "FPResizable", "Boolean", ok, val, errMsg
 
     val = "" : Err.Clear
-    val = CStr(viRef.FPMinimizable)
+    val = CStr(viRef.FPMinimizeable)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
     AppendPropLine responseText, "FPMinimizable", "Boolean", ok, val, errMsg
 
@@ -827,7 +827,7 @@ Sub AssignProp(ByRef viRef, ByVal propName, ByVal newVal)
         Case "FPRunTransparently"  : viRef.FPRunTransparently = CoerceBool(newVal)
         Case "FPTransparency"      : viRef.FPTransparency = CLng(newVal)
         Case "FPResizable"         : viRef.FPResizable = CoerceBool(newVal)
-        Case "FPMinimizable"       : viRef.FPMinimizable = CoerceBool(newVal)
+        Case "FPMinimizable"       : viRef.FPMinimizeable = CoerceBool(newVal)
         Case "FPShowMenuBar"       : viRef.FPShowMenuBar = CoerceBool(newVal)
         Case "TBVisible"           : viRef.TBVisible = CoerceBool(newVal)
         Case "TBShowRunButton"     : viRef.TBShowRunButton = CoerceBool(newVal)
@@ -862,7 +862,7 @@ Function ReadBackVi(ByRef viRef, ByVal propName)
         Case "FPRunTransparently"  : val = CStr(viRef.FPRunTransparently)
         Case "FPTransparency"      : val = CStr(viRef.FPTransparency)
         Case "FPResizable"         : val = CStr(viRef.FPResizable)
-        Case "FPMinimizable"       : val = CStr(viRef.FPMinimizable)
+        Case "FPMinimizable"      : val = CStr(viRef.FPMinimizeable)
         Case "FPShowMenuBar"       : val = CStr(viRef.FPShowMenuBar)
         Case "TBVisible"           : val = CStr(viRef.TBVisible)
         Case "TBShowRunButton"     : val = CStr(viRef.TBShowRunButton)
