@@ -96,18 +96,29 @@ export async function requestLabVIEWSession(
 export async function probeLabVIEWSession(
   options: LabVIEWSessionTargetOptions,
   viPath = '',
+  allowCreate = false,
 ): Promise<string | null> {
   const key = buildLabVIEWSessionKey(options);
-  const session = sessionPool.get(key);
+  let session = sessionPool.get(key);
+  const created = !session;
   if (!session) {
-    return null;
+    if (!allowCreate) {
+      return null;
+    }
+    session = new LabVIEWSessionHost(options);
+    sessionPool.set(key, session);
   }
 
   try {
-    return await session.request({
+    const response = await session.request({
       command: 'probe-session',
       viPath,
     });
+    if (created && !isOkResponse(response)) {
+      session.dispose(false);
+      sessionPool.delete(key);
+    }
+    return response;
   } catch (error) {
     session.dispose(true);
     sessionPool.delete(key);
@@ -303,6 +314,15 @@ function normalizePathKey(value: string | undefined): string {
     return '';
   }
   return path.resolve(value).replace(/\//g, '\\').toLowerCase();
+}
+
+function isOkResponse(responseText: string): boolean {
+  for (const line of responseText.split(/\r?\n/)) {
+    if (line.startsWith('ok=')) {
+      return line.slice(3).trim() === '1';
+    }
+  }
+  return false;
 }
 
 function asError(error: unknown): Error {

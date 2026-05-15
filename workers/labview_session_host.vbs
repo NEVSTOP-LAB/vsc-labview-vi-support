@@ -149,11 +149,22 @@ Sub HandleRequest(ByRef request)
 End Sub
 
 Sub HandleProbeSession(ByRef request)
+    Dim mismatchMessage
+
+    mismatchMessage = ""
+
     If HasReusableSessionApp() Then
         WriteFramedResponse BuildBaseResponse(True)
+    ElseIf TryReuseRunningLabVIEW(mismatchMessage) Then
+        WriteFramedResponse BuildBaseResponse(True)
     Else
-        selection = "no-reusable-session-labview-application"
-        reason = "No reusable persistent LabVIEW session is available."
+        If Len(mismatchMessage) > 0 Then
+            selection = "failed-to-match-target-labview-application"
+            reason = mismatchMessage
+        Else
+            selection = "no-reusable-session-labview-application"
+            reason = "No reusable or already running LabVIEW session is available."
+        End If
         WriteFramedResponse BuildBaseResponse(False)
     End If
 End Sub

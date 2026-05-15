@@ -253,6 +253,7 @@ export async function hasReusableLabVIEWConnection(
     const responseText = await probeLabVIEWSession(
       buildSessionTargetOptions(target, scripts),
       absViPath,
+      true,
     );
     if (responseText === null) {
       return false;
