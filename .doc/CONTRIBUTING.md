@@ -11,9 +11,10 @@
 3. [代码规范](#代码规范)
 4. [构建](#构建)
 5. [测试](#测试)
-6. [本地安装与验证](#本地安装与验证)
-7. [提交 Pull Request 流程](#提交-pull-request-流程)
-8. [发布步骤](#发布步骤)
+6. [测试说明与覆盖策略](#测试说明与覆盖策略)
+7. [本地安装与验证](#本地安装与验证)
+8. [提交 Pull Request 流程](#提交-pull-request-流程)
+9. [发布步骤](#发布步骤)
 
 ---
 
@@ -57,6 +58,7 @@ vsc-labview-vi-support/
 │   │   └── viewMode.ts           # 视图模式枚举与校验工具
 │   ├── scripts/
 │   │   ├── labviewRuntime.ts     # WSH Worker 调用封装 + LabVIEW 安装探测
+│   │   ├── labviewStatusPresentation.ts # 状态栏文案与提示生成（纯逻辑）
 │   │   ├── labviewVersionResolver.ts  # 版本解析（目录标记 / lvproj / VI 文件头）
 │   │   ├── propMetadata.ts       # VI 属性元数据定义（名称 / 类型 / 分组 / 可写性）
 │   │   ├── propsParser.ts        # Worker 响应文件解析 + JSON 信封读写
@@ -83,7 +85,13 @@ vsc-labview-vi-support/
 │   ├── generate-icon.js
 │   └── install-vsix.js
 ├── prototype/                    # 原型 / 诊断脚本与样例（不进入正式 VSIX）
-├── .doc/                         # 项目文档
+├── .doc/                         # 项目文档（中文）
+│   ├── README.md                 # 用户使用说明
+│   ├── CONTRIBUTING.md           # 开发与贡献流程
+│   ├── architecture.md           # 架构设计说明
+│   ├── repository-map.md         # 仓库结构扫描结果
+│   ├── testing.md                # 测试结构与覆盖说明
+│   └── CHANGELOG.md              # 文档变更记录
 ├── esbuild.js                    # 打包配置
 ├── eslint.config.mjs             # ESLint 配置
 ├── tsconfig.json                 # TypeScript 编译配置
@@ -97,6 +105,7 @@ vsc-labview-vi-support/
 ### TypeScript
 
 - **严格模式**：`tsconfig.json` 开启了 `"strict": true`，所有代码必须通过类型检查（`npm run check-types`）。
+- **环境类型声明**：TypeScript 配置显式包含 `node`、`vscode`、`mocha` 类型，避免构建环境与测试环境出现解析不一致。
 - **ESLint**：使用 `eslint.config.mjs` 中的规则（基于 `typescript-eslint`），提交前必须通过 lint（`npm run lint`）。
 - **命名约定**：
   - 文件名：`camelCase.ts`（类文件可用 `PascalCase.ts`）。
@@ -175,6 +184,16 @@ npm test
 2. 使用 Mocha TDD 风格（`suite` / `test` / `setup` / `teardown`）。
 3. 纯逻辑测试不得依赖 `vscode` 模块。
 4. 运行 `npm run test:unit` 确认通过。
+
+---
+
+## 测试说明与覆盖策略
+
+- 仓库当前同时保留 **单元测试** 与 **集成测试** 两层结构，不需要更换测试框架。
+- 纯函数、解析器、缓存与展示决策逻辑优先进入 `src/test/unit/`。
+- VS Code 激活链路、命令注册等扩展宿主行为放入 `src/test/extension.test.ts`。
+- Windows + LabVIEW COM 专属能力依赖真实环境，仍需在本机进行人工验证。
+- 更详细的测试矩阵请参见 [.doc/testing.md](./testing.md)。
 
 ---
 

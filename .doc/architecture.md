@@ -74,6 +74,16 @@
 
 ---
 
+### `src/scripts/labviewStatusPresentation.ts` — 状态栏文案生成
+
+**职责**：集中管理状态栏展示文案、提示文本和 QuickPick 辅助文本，保持 `labviewVersionStatus.ts` 只负责 VS Code 交互。
+
+- `buildStatusPresentation()`：根据项目版本、活动 VI 版本与已安装版本生成状态栏显示结果。
+- `buildPickDetail()`：生成版本选择列表的附加说明。
+- `buildQuickPickPlaceholder()`：生成 QuickPick 占位提示文案。
+
+---
+
 ### `src/scripts/labviewVersionResolver.ts` — 版本解析器
 
 **职责**：无副作用的版本解析逻辑（不依赖 `vscode`，可单元测试）。
@@ -170,11 +180,13 @@
 - 实现 `vscode.CustomEditorProvider` 接口。
 - 打开 VI 文件时：
   1. 查询缓存（`ViCache.entryForFile`）。
-  2. 若缓存命中，直接从缓存读取属性 JSON 和图像路径，发送给 WebView。
-  3. 若缓存未命中，调用 `readViProps` 和 `exportViImages` 生成缓存，再发送给 WebView。
+  2. 优先准备静态属性（文件名、路径、保存版本），无需连接 LabVIEW。
+  3. 仅在视图模式包含预览区域时，才按需导出 FP / BD 图像。
+  4. 用户点击“读取动态属性”或执行强制刷新时，再调用 `readViProps` 拉取动态属性。
 - 处理 WebView 消息：
-  - `requestProps`：触发属性重新加载（忽略缓存，强制调用 Worker）。
-  - `writeProps`：调用 `writeViProps`，写回 VI 后重新计算 MD5 并更新缓存。
+  - `reload`：触发强制刷新，可重读图像与已加载的动态属性。
+  - `loadDynamicProps`：单独触发动态属性读取。
+  - `saveProps`：调用 `writeViProps`，写回 VI 后重新计算 MD5 并更新缓存。
 
 ---
 
@@ -218,25 +230,32 @@ VS Code 打开 .vi 文件
 ViEditorProvider.openCustomDocument()
         │ 计算 MD5
         ▼
-ViCache.entryForFile()          ← 缓存未命中
+ViCache.entryForFile()             ← 缓存未命中
         │
         ▼
-labviewRuntime.readViProps()    ← 调用 read_vi_props_worker.vbs
+labviewRuntime.readStaticViProps() ← 先构造静态属性
         │
         ▼
-propsParser.parsePropsResponseText()
+ViCache.writeProps()               ← 写入静态属性缓存
         │
         ▼
-propMetadata.decorateProps()    ← 补充元数据
+WebView.postMessage(propsJson)
         │
-        ▼
-ViCache.writeProps()            ← 写入缓存
+        ├── 视图包含预览时
+        │        ▼
+        │ labviewRuntime.exportViPanelImages()
+        │        ▼
+        │ WebView.postMessage(imagePaths)
         │
-        ▼
-labviewRuntime.exportViImages() ← 调用 save_vi_panel_image_worker.vbs
-        │
-        ▼
-WebView.postMessage(propsJson, imagePaths)
+        └── 用户读取动态属性时
+                 ▼
+         labviewRuntime.readViProps()
+                 ▼
+         propsParser.parsePropsResponseText()
+                 ▼
+         propMetadata.decorateProps()
+                 ▼
+         ViCache.writeProps()      ← 更新为动态属性版本
 ```
 
 ### 打开 VI 文件（再次打开，缓存命中）
@@ -251,7 +270,7 @@ ViEditorProvider.openCustomDocument()
 ViCache.entryForFile()          ← 缓存命中
         │
         ▼
-ViCache.readProps()             ← 直接读取缓存
+ViCache.readProps()             ← 直接读取缓存（静态或动态）
         │
         ▼
 WebView.postMessage(propsJson, imagePaths)
@@ -280,3 +299,4 @@ WebView.postMessage(propsJson, imagePaths)
 | 版本严格匹配 | 目录标记或 lvproj 指定版本未安装时动态操作直接失败，避免误连错误的 LabVIEW 实例 |
 | 缓存版本号 | `propsParser.ts` 中的 `PROPS_CACHE_VERSION` 常量在缓存结构变更时递增，强制旧缓存失效 |
 | 静态属性合并 | 每次打开 VI 时都会重新合并静态属性（`SavedVersion` 等），防止缓存导致静态信息过时 |
+| 动态属性按需读取 | 默认先展示静态属性，避免首次打开即强依赖 LabVIEW 运行时，提高非预览场景响应速度 |
