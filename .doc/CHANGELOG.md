@@ -8,6 +8,15 @@
 
 ### 更新
 
+- 更新 `.doc/architecture.md`，将架构图与核心模块说明同步至拆分后的模块结构，新增 `runtime/workerInvoker`、`runtime/installedLabview`、`runtime/viPropsRuntime`、`viEditorSession`、`viWebviewHtml`、`viWebviewProtocol`、`scriptPaths` 等模块说明，删除已退化为 barrel 的旧 `labviewRuntime.ts` 实现描述。
+- 更新 `.doc/repository-map.md`，将目录树与主要模块说明同步至拆分后的模块结构。
+
+---
+
+## [2026-05-15]
+
+### 更新
+
 - 更新 `.github/hooks/local-dev.json`，将文档同步检查加入 Copilot 本地 hook 链路，并在 `Stop` 阶段先执行文档检查、再执行本地构建与加载。
 - 更新 `.doc/CONTRIBUTING.md`，补充 `copilot-doc-update-hook.js` 的脚本入口、阻断规则和文档同步要求。
 
