@@ -1,6 +1,10 @@
 import * as assert from 'assert';
 
-import { buildStatusPresentation } from '../../scripts/labviewStatusPresentation';
+import {
+  buildQuickPickInstallations,
+  buildQuickPickPlaceholder,
+  buildStatusPresentation,
+} from '../../scripts/labviewStatusPresentation';
 import type { InstalledLabVIEW } from '../../scripts/labviewRuntime';
 import type { ResolvedLabVIEWVersion } from '../../scripts/labviewVersionResolver';
 
@@ -84,5 +88,50 @@ suite('labviewVersionStatus', () => {
 
     assert.strictEqual(presentation.warning, true);
     assert.strictEqual(presentation.text, '$(warning) LabVIEW: 未检测到可用安装');
+  });
+
+  test('prioritizes active vi match when project version is unset', () => {
+    const items = buildQuickPickInstallations(
+      [
+        installation(),
+        installation({
+          major: 20,
+          minor: 0,
+          architecture: 'x86',
+          registryKey: 'LabVIEW 2020',
+          installDir: 'C:\\Program Files (x86)\\NI\\LabVIEW 2020',
+          exePath: 'C:\\Program Files (x86)\\NI\\LabVIEW 2020\\LabVIEW.exe',
+        }),
+      ],
+      null,
+      resolvedVersion({
+        major: 20,
+        minor: 0,
+        architecture: 'x86',
+        source: 'vi',
+        sourcePath: 'C:\\repo\\demo.vi',
+      }),
+    );
+
+    assert.strictEqual(items[0].installation.major, 20);
+    assert.strictEqual(items[0].installation.architecture, 'x86');
+    assert.strictEqual(items[0].detail, '推荐：与当前活动 VI 保存版本一致。');
+  });
+
+  test('mentions active vi recommendation in quick pick placeholder', () => {
+    const placeholder = buildQuickPickPlaceholder(
+      'C:\\repo',
+      null,
+      2,
+      resolvedVersion({
+        major: 20,
+        minor: 0,
+        architecture: 'x86',
+        source: 'vi',
+        sourcePath: 'C:\\repo\\demo.vi',
+      }),
+    );
+
+    assert.match(placeholder, /当前活动 VI 保存版本 LabVIEW 2020 32bit/);
   });
 });

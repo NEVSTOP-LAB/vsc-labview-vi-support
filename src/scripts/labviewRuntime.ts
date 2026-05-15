@@ -12,6 +12,9 @@ import {
 import { decorateProps, WRITABLE_PROP_TYPES } from './propMetadata';
 import type { ScriptPaths } from './scriptPaths';
 import {
+  requestLabVIEWSession,
+} from './labviewSession';
+import {
   formatLabVIEWExpectedVersion,
   resolveLabVIEWVersionForPath,
   type LabVIEWArchitecture,
@@ -20,12 +23,13 @@ import {
 } from './labviewVersionResolver';
 
 const DEFAULT_TIMEOUT_MS = 120_000;
-const DEFAULT_WORKER_TIMEOUT_SECONDS = 45;
 const DISCOVERY_TIMEOUT_MS = 30_000;
 const VI_VERSION_SCAN_BYTES = 512;
 const VI_VERSION_MARKER = Buffer.from([0x00, 0x00, 0x00, 0xa0]);
 const PE_MACHINE_I386 = 0x014c;
 const PE_MACHINE_AMD64 = 0x8664;
+
+export { disposeLabVIEWSessions } from './labviewSession';
 
 export interface LabVIEWRuntimeOptions {
   timeoutMs?: number;
@@ -153,17 +157,16 @@ export async function exportViPanelImages(
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      const responseText = await runWorkerWithResponse({
-        scriptHost: selectScriptHost(target.installation?.architecture ?? target.requestedVersion?.architecture),
-        scriptPath: scripts.savePanelImageWorker,
-        args: [
-          `/viPath:${absViPath}`,
-          ...(normalizedOutputs.fp ? [`/fpOutputPath:${normalizedOutputs.fp}`] : []),
-          ...(normalizedOutputs.bd ? [`/bdOutputPath:${normalizedOutputs.bd}`] : []),
-          ...buildTargetArgs(target),
-        ],
-        timeoutMs: options.timeoutMs,
-      });
+      const responseText = await requestLabVIEWSession(
+        buildSessionTargetOptions(target, scripts),
+        {
+          command: 'export-panels',
+          viPath: absViPath,
+          fpOutputPath: normalizedOutputs.fp,
+          bdOutputPath: normalizedOutputs.bd,
+          timeoutMs: options.timeoutMs,
+        },
+      );
       const response = parseImageWorkerResponseText(responseText);
       if (response.ok) {
         return {
@@ -199,15 +202,14 @@ export async function readViProps(
   const absViPath = path.resolve(viPath);
   const target = await resolveTargetInstallation(absViPath);
   ensureTargetInstallation(target, absViPath);
-  const responseText = await runWorkerWithResponse({
-    scriptHost: selectScriptHost(target.installation?.architecture ?? target.requestedVersion?.architecture),
-    scriptPath: scripts.readPropsWorker,
-    args: [
-      `/viPath:${absViPath}`,
-      ...buildTargetArgs(target),
-    ],
-    timeoutMs: options.timeoutMs,
-  });
+  const responseText = await requestLabVIEWSession(
+    buildSessionTargetOptions(target, scripts),
+    {
+      command: 'read-props',
+      viPath: absViPath,
+      timeoutMs: options.timeoutMs,
+    },
+  );
   const response = parsePropsResponseText(responseText);
   if (!response.ok) {
     throw new Error(response.reason || 'Read props worker failed.');
@@ -263,17 +265,16 @@ export async function writeViProps(
     const requestBody = buildWriteRequestLines(updates).join('\r\n') + '\r\n';
     await fs.promises.writeFile(requestPath, requestBody, 'ascii');
 
-    const responseText = await runWorkerWithResponse({
-      scriptHost: selectScriptHost(target.installation?.architecture ?? target.requestedVersion?.architecture),
-      scriptPath: scripts.writePropsWorker,
-      args: [
-        `/viPath:${absViPath}`,
-        `/requestPath:${requestPath}`,
-        '/save:1',
-        ...buildTargetArgs(target),
-      ],
-      timeoutMs: options.timeoutMs,
-    });
+    const responseText = await requestLabVIEWSession(
+      buildSessionTargetOptions(target, scripts),
+      {
+        command: 'write-props',
+        viPath: absViPath,
+        requestPath,
+        save: true,
+        timeoutMs: options.timeoutMs,
+      },
+    );
     const response = parsePropsResponseText(responseText);
     if (!response.ok) {
       throw new Error(response.reason || 'Write props worker failed.');
@@ -552,16 +553,25 @@ function scoreByBitness(actual: string, preferred: string): number {
   return actual === preferred ? 0 : 1;
 }
 
-function buildTargetArgs(target: RuntimeTargetSelection): string[] {
-  const args: string[] = [];
-  if (target.requestedVersion) {
-    args.push(`/expectedVersion:${formatLabVIEWExpectedVersion(target.requestedVersion)}`);
-  }
-  if (target.installation) {
-    args.push(`/targetExe:${target.installation.exePath}`);
-    args.push(`/expectedDirectory:${target.installation.installDir}`);
-  }
-  return args;
+function buildSessionTargetOptions(
+  target: RuntimeTargetSelection,
+  scripts: ScriptPaths,
+): {
+  scriptHost: string;
+  sessionHostScript: string;
+  targetExe?: string;
+  expectedDirectory?: string;
+  expectedVersion?: string;
+} {
+  return {
+    scriptHost: selectScriptHost(target.installation?.architecture ?? target.requestedVersion?.architecture),
+    sessionHostScript: scripts.sessionHostWorker,
+    targetExe: target.installation?.exePath,
+    expectedDirectory: target.installation?.installDir,
+    expectedVersion: target.requestedVersion
+      ? formatLabVIEWExpectedVersion(target.requestedVersion)
+      : undefined,
+  };
 }
 
 function ensureTargetInstallation(target: RuntimeTargetSelection, viPath: string): void {
@@ -591,43 +601,6 @@ function selectScriptHost(architecture: string | undefined): string {
     }
   }
   return path.join(windir, 'System32', 'cscript.exe');
-}
-
-async function runWorkerWithResponse(options: {
-  scriptHost: string;
-  scriptPath: string;
-  args: string[];
-  timeoutMs?: number;
-}): Promise<string> {
-  const responsePath = path.join(
-    os.tmpdir(),
-    `labview-worker-${Math.random().toString(16).slice(2)}.out`,
-  );
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const timeoutSeconds = Math.max(DEFAULT_WORKER_TIMEOUT_SECONDS, Math.ceil(timeoutMs / 1000));
-  try {
-    const result = await runCommand(
-      options.scriptHost,
-      ['//Nologo', options.scriptPath, ...options.args, `/responsePath:${responsePath}`, `/timeoutSeconds:${timeoutSeconds}`],
-      { timeoutMs },
-    );
-    let responseText = '';
-    try {
-      responseText = await fs.promises.readFile(responsePath, 'ascii');
-    } catch {
-      if (result.exitCode !== 0) {
-        throw new Error(result.stderr.trim() || `Worker failed with exit code ${result.exitCode}.`);
-      }
-      throw new Error('Worker did not create a response file.');
-    }
-    return responseText;
-  } finally {
-    try {
-      await fs.promises.unlink(responsePath);
-    } catch {
-      // ignore
-    }
-  }
 }
 
 function parseImageWorkerResponseText(text: string): ImageWorkerResponse {

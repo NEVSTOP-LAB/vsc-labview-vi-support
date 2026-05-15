@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import {
+  mergeUpdatedPropsIntoEnvelope,
   mergeStaticPropsIntoEnvelope,
   parseCachedPropsJson,
   parsePropsResponseText,
@@ -306,5 +307,73 @@ suite('propsParser cached props JSON', () => {
     assert.strictEqual(merged.props['Path'].value, 'C:\\new\\renamed.vi');
     assert.strictEqual(merged.props['Description'].value, 'cached description');
     assert.strictEqual(merged.props['Description'].loaded, true);
+  });
+
+  test('merges write results without dropping untouched props', () => {
+    const merged = mergeUpdatedPropsIntoEnvelope(
+      {
+        viPath: 'C:\\main.vi',
+        lvVersion: '25.0',
+        dynamicPropsLoaded: true,
+        props: {
+          Name: {
+            ok: true,
+            type: 'String',
+            value: 'main.vi',
+            error: null,
+            loaded: true,
+            writable: false,
+            source: 'static',
+            sourceLabel: '静态',
+          },
+          Description: {
+            ok: true,
+            type: 'String',
+            value: 'old description',
+            error: null,
+            loaded: true,
+            writable: true,
+            source: 'dynamic',
+            sourceLabel: '动态',
+          },
+          HistoryText: {
+            ok: true,
+            type: 'String',
+            value: 'kept history',
+            error: null,
+            loaded: true,
+            writable: true,
+            source: 'dynamic',
+            sourceLabel: '动态',
+          },
+        },
+      },
+      {
+        viPath: 'C:\\main.vi',
+        lvVersion: '25.3.2f2',
+        dynamicPropsLoaded: true,
+        saved: true,
+        saveError: '',
+        props: {
+          Description: {
+            ok: true,
+            type: 'String',
+            value: 'new description',
+            error: null,
+            loaded: true,
+            writable: true,
+            source: 'dynamic',
+            sourceLabel: '动态',
+          },
+        },
+      },
+    );
+
+    assert.strictEqual(merged.saved, true);
+    assert.strictEqual(merged.saveError, '');
+    assert.strictEqual(merged.lvVersion, '25.3.2f2');
+    assert.strictEqual(merged.props['Description'].value, 'new description');
+    assert.strictEqual(merged.props['HistoryText'].value, 'kept history');
+    assert.strictEqual(merged.props['Name'].value, 'main.vi');
   });
 });

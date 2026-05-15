@@ -13,6 +13,7 @@ import {
   writeViProps,
 } from '../scripts/labviewRuntime';
 import {
+  mergeUpdatedPropsIntoEnvelope,
   mergeStaticPropsIntoEnvelope,
   parseCachedPropsJson,
   toCachedPropsJson,
@@ -503,6 +504,10 @@ class ViEditorSession {
   }
 
   private async savePropsAndReload(updates: Record<string, unknown>): Promise<void> {
+    const cachedBeforeSave = this.currentEntry
+      ? await this.readCachedProps(this.currentEntry)
+      : null;
+
     let env: PropsJsonEnvelope;
     try {
       env = await writeViProps(this.document.uri.fsPath, updates, this.scripts, this.runtimeOptions);
@@ -538,13 +543,27 @@ class ViEditorSession {
 
     this.currentEntry = entry;
     await this.cache.ensureEntry(entry, this.document.uri.fsPath);
-    await this.cache.writeProps(entry, toCachedPropsJson(env));
+
+    let mergedEnv = env;
+    let baseEnvelope = cachedBeforeSave;
+    if (baseEnvelope === null) {
+      try {
+        baseEnvelope = await this.ensureStaticProps(entry);
+      } catch {
+        baseEnvelope = null;
+      }
+    }
+    if (baseEnvelope !== null) {
+      mergedEnv = mergeUpdatedPropsIntoEnvelope(baseEnvelope, env);
+    }
+
+    await this.cache.writeProps(entry, toCachedPropsJson(mergedEnv));
 
     const initialLoading = this.buildLoadingState(entry, false);
     await this.pushState({
       fpImage: this.cache.has(entry, 'fpImage') ? entry.artifacts.fpImage : null,
       bdImage: this.cache.has(entry, 'bdImage') ? entry.artifacts.bdImage : null,
-      props: env,
+      props: mergedEnv,
       errors: [],
       loading: initialLoading,
     });
@@ -554,7 +573,7 @@ class ViEditorSession {
     await this.pushState({
       fpImage: this.cache.has(entry, 'fpImage') ? entry.artifacts.fpImage : null,
       bdImage: this.cache.has(entry, 'bdImage') ? entry.artifacts.bdImage : null,
-      props: (await this.readCachedProps(entry)) ?? env,
+      props: (await this.readCachedProps(entry)) ?? mergedEnv,
       errors: [],
       loading: { fp: false, bd: false, props: false },
     });

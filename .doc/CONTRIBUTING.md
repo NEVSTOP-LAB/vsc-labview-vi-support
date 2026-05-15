@@ -81,6 +81,7 @@ vsc-labview-vi-support/
 │   └── webview/                  # WebView 的 HTML / CSS / JS（无运行时依赖）
 ├── scripts/                      # 开发辅助脚本（不进入 VSIX）
 │   ├── clean-out.js
+│   ├── copilot-doc-update-hook.js
 │   ├── copilot-local-dev-hook.js
 │   ├── generate-icon.js
 │   └── install-vsix.js
@@ -122,6 +123,13 @@ vsc-labview-vi-support/
 
 - 所有 `.doc/` 下的 `.md` 文件必须使用**中文**撰写。
 - `README.md`（根目录）仅包含用户向内容；开发细节一律放入 `.doc/CONTRIBUTING.md`。
+- 每次非文档改动后，都要补一次对应的说明文档更新；`.doc/CHANGELOG.md` 只能作为记录，不能单独代替说明文档同步。
+
+### Copilot Hook
+
+- `.github/hooks/local-dev.json` 为 Copilot 本地会话注册了两个 hook：文档同步检查和本地构建/安装。
+- `scripts/copilot-doc-update-hook.js` 会跟踪当前会话中的非文档改动；如果最近一次非文档改动之后没有更新 `README.md` 或 `.doc/` 下的说明文档，就会在 `Stop` 阶段阻断结束。
+- `scripts/copilot-local-dev-hook.js` 会在检测到相关源码改动后执行 `npm run compile` 和 `npm run load:local`。
 
 ---
 
@@ -141,9 +149,9 @@ npm run package
 npm run package:vsix
 ```
 
-> `npm run compile` 会依次执行：  
-> 1. `check-types`（`tsc --noEmit`）  
-> 2. `lint`（`eslint src`）  
+> `npm run compile` 会依次执行：
+> 1. `check-types`（`tsc --noEmit`）
+> 2. `lint`（`eslint src`）
 > 3. `node esbuild.js`（打包到 `dist/`）
 
 ---
@@ -204,8 +212,8 @@ npm test
 npm run load:local
 ```
 
-`load:local` 会依次执行：  
-1. `npm run package:vsix`（生成 `.vsix`）  
+`load:local` 会依次执行：
+1. `npm run package:vsix`（生成 `.vsix`）
 2. `npm run install:vsix`（通过 PowerShell 调用 `code.cmd --install-extension` 安装）
 
 安装成功后，在 VS Code 中打开任意 `.vi` 文件即可验证扩展是否正常激活。

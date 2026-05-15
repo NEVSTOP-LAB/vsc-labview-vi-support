@@ -15,7 +15,7 @@ import {
   type InstalledLabVIEW,
 } from './scripts/labviewRuntime';
 import {
-  buildPickDetail,
+  buildQuickPickInstallations,
   buildQuickPickPlaceholder,
   buildStatusPresentation,
 } from './scripts/labviewStatusPresentation';
@@ -119,8 +119,9 @@ export class LabVIEWVersionStatusController implements vscode.Disposable {
       return;
     }
 
-    const [rootVersion, installations] = await Promise.all([
+    const [rootVersion, activeViVersion, installations] = await Promise.all([
       resolveDirectoryLabVIEWVersion(scope.rootDir),
+      this.resolveActiveViVersion(scope),
       discoverInstalledLabVIEWs({ refresh: true }),
     ]);
     this.discoveryError = null;
@@ -140,10 +141,14 @@ export class LabVIEWVersionStatusController implements vscode.Disposable {
       return;
     }
 
-    const items: VersionQuickPickItem[] = installations.map((installation) => ({
+    const items: VersionQuickPickItem[] = buildQuickPickInstallations(
+      installations,
+      rootVersion,
+      activeViVersion,
+    ).map(({ installation, detail }) => ({
       label: formatLabVIEWDisplayName(installation, installation.architecture),
       description: installation.installDir,
-      detail: buildPickDetail(installation, rootVersion),
+      detail,
       action: 'select',
       installation,
     }));
@@ -154,7 +159,7 @@ export class LabVIEWVersionStatusController implements vscode.Disposable {
     });
 
     const selected = await vscode.window.showQuickPick(items, {
-      placeHolder: buildQuickPickPlaceholder(scope.rootDir, rootVersion, installations.length),
+      placeHolder: buildQuickPickPlaceholder(scope.rootDir, rootVersion, installations.length, activeViVersion),
       matchOnDescription: true,
       matchOnDetail: true,
       ignoreFocusOut: true,

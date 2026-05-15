@@ -8,6 +8,17 @@
 
 ### 更新
 
+- 更新 `.github/hooks/local-dev.json`，将文档同步检查加入 Copilot 本地 hook 链路，并在 `Stop` 阶段先执行文档检查、再执行本地构建与加载。
+- 更新 `.doc/CONTRIBUTING.md`，补充 `copilot-doc-update-hook.js` 的脚本入口、阻断规则和文档同步要求。
+
+### 新增
+
+- 新增 `scripts/copilot-doc-update-hook.js`，要求每次非文档改动后至少补一次 `README.md` 或 `.doc/` 下的说明文档更新；`.doc/CHANGELOG.md` 单独更新不视为已完成同步。
+
+## [2026-05-15]
+
+### 更新
+
 - 修正文档对当前实现的描述，使其与“静态属性先展示、动态属性按需读取、预览按需导出”的真实行为保持一致。
 - 新增 `.doc/repository-map.md`，补充包含隐藏目录的仓库结构扫描结果与模块职责说明。
 - 新增 `.doc/testing.md`，集中说明测试入口、覆盖范围、缺口与建议执行顺序。
