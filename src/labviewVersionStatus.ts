@@ -53,15 +53,24 @@ export class LabVIEWVersionStatusController implements vscode.Disposable {
     let projectVersion: ResolvedLabVIEWVersion | null = null;
     let activeViVersion: ResolvedLabVIEWVersion | null = null;
     let installations: InstalledLabVIEW[] = [];
-    try {
-      [projectVersion, activeViVersion, installations] = await Promise.all([
-        resolveDirectoryLabVIEWVersion(scope.rootDir),
-        this.resolveActiveViVersion(scope),
-        discoverInstalledLabVIEWs(),
-      ]);
+    const [projectVersionResult, activeViVersionResult, installationsResult] = await Promise.allSettled([
+      resolveDirectoryLabVIEWVersion(scope.rootDir),
+      this.resolveActiveViVersion(scope),
+      discoverInstalledLabVIEWs(),
+    ]);
+    if (projectVersionResult.status === 'fulfilled') {
+      projectVersion = projectVersionResult.value;
+    }
+    if (activeViVersionResult.status === 'fulfilled') {
+      activeViVersion = activeViVersionResult.value;
+    }
+    if (installationsResult.status === 'fulfilled') {
+      installations = installationsResult.value;
       this.discoveryError = null;
-    } catch (error) {
-      this.discoveryError = error instanceof Error ? error.message : String(error);
+    } else {
+      this.discoveryError = installationsResult.reason instanceof Error
+        ? installationsResult.reason.message
+        : String(installationsResult.reason);
     }
 
     if (serial !== this.refreshSerial) {

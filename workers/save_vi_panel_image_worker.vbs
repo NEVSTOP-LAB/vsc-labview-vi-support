@@ -360,14 +360,15 @@ End Sub
 
 Function MatchesTarget(ByVal appDir, ByVal appVer, ByVal expectedDirNorm, ByVal expectedVer)
     MatchesTarget = False
+    If Len(expectedDirNorm) = 0 And Len(expectedVer) = 0 Then
+        MatchesTarget = True
+        Exit Function
+    End If
     If Len(expectedDirNorm) > 0 Then
         If NormalizePath(appDir) <> expectedDirNorm Then Exit Function
     End If
     If Len(expectedVer) > 0 Then
         If LCase(Left(appVer, Len(expectedVer))) <> LCase(expectedVer) Then Exit Function
-    End If
-    If Len(expectedDirNorm) = 0 And Len(expectedVer) = 0 Then
-        Exit Function
     End If
     MatchesTarget = True
 End Function

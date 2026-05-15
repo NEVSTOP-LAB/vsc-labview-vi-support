@@ -148,6 +148,7 @@ export async function exportViPanelImages(
     throw new Error('At least one image output path must be provided.');
   }
   const target = await resolveTargetInstallation(absViPath);
+  ensureTargetInstallation(target, absViPath);
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -196,6 +197,7 @@ export async function readViProps(
   ensureWindows();
   const absViPath = path.resolve(viPath);
   const target = await resolveTargetInstallation(absViPath);
+  ensureTargetInstallation(target, absViPath);
   const responseText = await runWorkerWithResponse({
     scriptHost: selectScriptHost(target.installation?.architecture ?? target.requestedVersion?.architecture),
     scriptPath: scripts.readPropsWorker,
@@ -251,6 +253,7 @@ export async function writeViProps(
   ensureWindows();
   const absViPath = path.resolve(viPath);
   const target = await resolveTargetInstallation(absViPath);
+  ensureTargetInstallation(target, absViPath);
   const requestPath = path.join(
     os.tmpdir(),
     `labview-vi-write-${Math.random().toString(16).slice(2)}.in`,
@@ -397,10 +400,11 @@ export async function discoverInstalledLabVIEWs(options: { refresh?: boolean } =
         continue;
       }
       const architecture = await readPeArchitecture(exePath) ?? inferArchitectureFromInstallDir(installDir);
-      if (!architecture) {
+      const normalizedArchitecture = architecture ?? inferArchitectureFromHost();
+      if (!normalizedArchitecture) {
         continue;
       }
-      const key = `${parsedVersion.major}.${parsedVersion.minor}|${architecture}|${exePath.toLowerCase()}`;
+      const key = `${parsedVersion.major}.${parsedVersion.minor}|${normalizedArchitecture}|${exePath.toLowerCase()}`;
       if (seen.has(key)) {
         continue;
       }
@@ -410,7 +414,7 @@ export async function discoverInstalledLabVIEWs(options: { refresh?: boolean } =
         registryKey: row.version,
         installDir,
         exePath,
-        architecture,
+        architecture: normalizedArchitecture,
       });
     }
     installations.sort((left, right) => (
@@ -511,6 +515,16 @@ function inferArchitectureFromInstallDir(installDir: string): LabVIEWArchitectur
   return null;
 }
 
+function inferArchitectureFromHost(): LabVIEWArchitecture | null {
+  if (process.arch === 'ia32') {
+    return 'x86';
+  }
+  if (process.arch === 'x64') {
+    return 'x64';
+  }
+  return null;
+}
+
 function selectInstalledLabVIEW(
   installations: InstalledLabVIEW[],
   targetMajor: number,
@@ -541,6 +555,18 @@ function buildTargetArgs(target: RuntimeTargetSelection): string[] {
     args.push(`/expectedDirectory:${target.installation.installDir}`);
   }
   return args;
+}
+
+function ensureTargetInstallation(target: RuntimeTargetSelection, viPath: string): void {
+  if (!target.requestedVersion || target.installation) {
+    return;
+  }
+  const expectedVersion = formatLabVIEWExpectedVersion(target.requestedVersion);
+  const expectedArchitecture = target.requestedVersion.architecture ? ` (${target.requestedVersion.architecture})` : '';
+  throw new Error(
+    `No installed LabVIEW matches requested version ${expectedVersion}${expectedArchitecture} for ${viPath}. `
+    + 'Please install a matching version or update the project LabVIEW marker.',
+  );
 }
 
 function selectScriptHost(architecture: string | undefined): string {

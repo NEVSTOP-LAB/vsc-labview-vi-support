@@ -210,7 +210,6 @@ Function ParseRequestFile(ByVal pathText)
     Dim key
     Dim value
     Dim rest
-    Dim lastUnder
     Dim propName
     Dim suffix
     Dim dict
@@ -229,10 +228,16 @@ Function ParseRequestFile(ByVal pathText)
                 value = Mid(line, eqPos + 1)
                 If Left(key, 4) = "set_" Then
                     rest = Mid(key, 5)
-                    lastUnder = InStrRev(rest, "_")
-                    If lastUnder > 0 Then
-                        propName = Left(rest, lastUnder - 1)
-                        suffix = Mid(rest, lastUnder + 1)
+                    propName = ""
+                    suffix = ""
+                    If Len(rest) > 5 And LCase(Right(rest, 5)) = "_type" Then
+                        propName = Left(rest, Len(rest) - 5)
+                        suffix = "type"
+                    ElseIf Len(rest) > 4 And LCase(Right(rest, 4)) = "_val" Then
+                        propName = Left(rest, Len(rest) - 4)
+                        suffix = "val"
+                    End If
+                    If Len(propName) > 0 Then
                         Dim existing
                         Dim partType
                         Dim partVal
@@ -280,13 +285,6 @@ Sub WriteAllProperties(ByRef stream, ByRef updates)
     Dim newVal
     Dim ok
     Dim errMsg
-    Dim fp
-    Dim fpOk
-    Dim fpErrMsg
-
-    Set fp   = Nothing
-    fpOk     = False
-    fpErrMsg = ""
 
     keys = updates.Keys
     For i = 0 To UBound(keys)
@@ -315,53 +313,21 @@ Sub WriteAllProperties(ByRef stream, ByRef updates)
                     "Type mismatch: requested " & incomingType & ", expected " & propType
             Else
                 newVal = DecodeBase64Utf8(incomingValB64)
-
-                If category = "fp" Then
-                    If fp Is Nothing And Not fpOk Then
-                        On Error Resume Next
-                        Err.Clear
-                        Set fp = vi.FP
-                        fpOk = (Err.Number = 0)
-                        fpErrMsg = Err.Description
-                        Err.Clear
-                        On Error GoTo 0
-                    End If
-                    If Not fpOk Or fp Is Nothing Then
-                        WritePropLine stream, propName, propType, False, "", _
-                            "FP object inaccessible: " & fpErrMsg
-                    Else
-                        On Error Resume Next
-                        Err.Clear
-                        AssignProp fp, propName, propType, newVal
-                        ok = (Err.Number = 0)
-                        errMsg = Err.Description
-                        Err.Clear
-                        On Error GoTo 0
-                        If ok Then
-                            WritePropLine stream, propName, propType, True, ReadBackFp(fp, propName), ""
-                        Else
-                            WritePropLine stream, propName, propType, False, "", errMsg
-                        End If
-                    End If
+                On Error Resume Next
+                Err.Clear
+                AssignProp vi, propName, propType, newVal
+                ok = (Err.Number = 0)
+                errMsg = Err.Description
+                Err.Clear
+                On Error GoTo 0
+                If ok Then
+                    WritePropLine stream, propName, propType, True, ReadBackVi(vi, propName), ""
                 Else
-                    On Error Resume Next
-                    Err.Clear
-                    AssignProp vi, propName, propType, newVal
-                    ok = (Err.Number = 0)
-                    errMsg = Err.Description
-                    Err.Clear
-                    On Error GoTo 0
-                    If ok Then
-                        WritePropLine stream, propName, propType, True, ReadBackVi(vi, propName), ""
-                    Else
-                        WritePropLine stream, propName, propType, False, "", errMsg
-                    End If
+                    WritePropLine stream, propName, propType, False, "", errMsg
                 End If
             End If
         End If
     Next
-
-    If Not (fp Is Nothing) Then Set fp = Nothing
 End Sub
 
 ' ===========================================================================
@@ -401,18 +367,6 @@ Function ReadBackVi(ByRef viRef, ByVal propName)
     If Err.Number <> 0 Then val = "" : Err.Clear
     On Error GoTo 0
     ReadBackVi = val
-End Function
-
-Function ReadBackFp(ByRef fpRef, ByVal propName)
-    On Error Resume Next
-    Dim val
-    val = ""
-    Select Case propName
-        Case "FPTitle" : val = CStr(fpRef.Title)
-    End Select
-    If Err.Number <> 0 Then val = "" : Err.Clear
-    On Error GoTo 0
-    ReadBackFp = val
 End Function
 
 Function CoerceBool(ByVal value)
