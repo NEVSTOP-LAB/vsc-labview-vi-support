@@ -406,7 +406,9 @@ class ViEditorSession {
       }
     }
 
-    const refreshDynamicProps = forceRefresh && this.isDynamicPropsLoaded(cachedProps);
+    // Manual reload is an explicit user request to re-read properties, so do
+    // not keep unread dynamic placeholders around.
+    const refreshDynamicProps = forceRefresh;
 
     if (forceRefresh) {
       for (const k of ['fpImage', 'bdImage'] as const) {
