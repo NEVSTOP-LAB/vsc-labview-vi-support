@@ -22,18 +22,19 @@
 │         │                                                     │
 │         ▼                                                     │
 │  ┌──────────────────────────────────────────────────────┐    │
-│  │               ViEditorProvider                        │    │
-│  │        (自定义编辑器宿主 + WebView 管理)               │    │
+│  │  ViEditorProvider  (WebView 初始化 / 视图模式)        │    │
+│  │     └── ViEditorSession (缓存编排 / 消息收发)         │    │
 │  │                                                        │    │
 │  │   ┌──────────────┐    ┌────────────────────────────┐  │    │
-│  │   │   ViCache    │    │     labviewRuntime.ts       │  │    │
-│  │   │ (MD5 缓存)   │    │  (Worker 调用 + 版本探测)   │  │    │
-│  │   └──────────────┘    └──────────┬─────────────────┘  │    │
-│  └──────────────────────────────────┼────────────────────┘    │
-│                                     │                         │
-└─────────────────────────────────────┼─────────────────────────┘
-                                      │ spawn cscript.exe
-                                      ▼
+│  │   │   ViCache    │    │  labviewRuntime.ts (barrel) │  │    │
+│  │   │ (MD5 缓存)   │    │  ├─ workerInvoker.ts        │  │    │
+│  │   └──────────────┘    │  ├─ installedLabview.ts     │  │    │
+│  │                        │  └─ viPropsRuntime.ts       │  │    │
+│  └───────────────────────└────────────┬────────────────┘    │
+│                                       │                      │
+└───────────────────────────────────────┼──────────────────────┘
+                                        │ stdin/stdout (session host)
+                                        ▼
                          ┌────────────────────────┐
                          │   Windows Script Host   │
                          │  workers/*.vbs          │
@@ -70,7 +71,6 @@
   - 持有状态栏项（`vscode.StatusBarItem`），在激活资源变更时触发 `refresh()`。
   - `refresh()`：并发查询项目版本（`resolveDirectoryLabVIEWVersion`）、活动 VI 版本（`resolveLabVIEWVersionForPath`）和已安装版本列表（`discoverInstalledLabVIEWs`），并根据结果更新状态栏文本、提示和背景色。
   - `configureVersion()`：弹出 QuickPick 列表，允许用户为项目根目录写入或清除目录标记文件。
-- `buildStatusPresentation()`：纯函数，根据输入状态生成状态栏显示文本和提示文字（可单元测试）。
 
 ---
 
@@ -78,7 +78,7 @@
 
 **职责**：集中管理状态栏展示文案、提示文本和 QuickPick 辅助文本，保持 `labviewVersionStatus.ts` 只负责 VS Code 交互。
 
-- `buildStatusPresentation()`：根据项目版本、活动 VI 版本与已安装版本生成状态栏显示结果。
+- `buildStatusPresentation()`：根据项目版本、活动 VI 版本与已安装版本生成状态栏显示结果（纯函数，可单元测试）。
 - `buildPickDetail()`：生成版本选择列表的附加说明。
 - `buildQuickPickPlaceholder()`：生成 QuickPick 占位提示文案。
 
@@ -107,27 +107,54 @@
 
 ---
 
-### `src/scripts/labviewRuntime.ts` — 运行时调用层
+### `src/scripts/scriptPaths.ts` — 脚本路径与解释器选择
 
-**职责**：封装所有需要启动外部进程（`cscript.exe`）的操作，以及 VI 文件头读取和已安装版本探测。
+**职责**：定位 worker 脚本文件路径，以及选择合适的 `cscript.exe` 解释器。
 
-主要导出：
+- `resolveScriptPaths(extensionRoot)`：返回 `ScriptPaths`，包含所有 worker 文件的绝对路径。
+- `selectScriptHost(architecture)`：根据目标 LabVIEW 的位宽选择 `System32` 或 `SysWOW64` 下的 `cscript.exe`。
+
+---
+
+### `src/scripts/labviewRuntime.ts` — barrel re-export
+
+**职责**：统一重新导出 `runtime/` 子目录的所有公开符号，保持现有 import 路径兼容。调用方无需感知底层的拆分结构。
+
+---
+
+### `src/scripts/runtime/workerInvoker.ts` — 子进程调用工具
+
+**职责**：封装 `child_process.spawn` + 超时控制，为需要启动外部命令的上层模块提供统一接口。
+
+- `runCommand(command, args, options)`：启动子进程，捕获 stdout/stderr，支持超时。
+- `delay(timeoutMs)`：简单延时 Promise，供重试逻辑使用。
+
+---
+
+### `src/scripts/runtime/installedLabview.ts` — 安装版本探测
+
+**职责**：通过 PowerShell 查询注册表，枚举本机已安装的 LabVIEW 版本，并读取 PE 头确认位宽。
+
+- `discoverInstalledLabVIEWs(options)`：枚举已安装版本，结果带模块级缓存（支持 `refresh` 强制刷新）。
+- `buildInstalledLabVIEWDiscoveryScript()`：生成 PowerShell 发现脚本（可单元测试）。
+- `selectInstalledLabVIEW(installations, major, minor, arch)`：从安装列表中挑选最匹配的版本。
+
+---
+
+### `src/scripts/runtime/viPropsRuntime.ts` — VI 级运行时操作
+
+**职责**：封装所有需要通过 LabVIEW COM/ActiveX 读写 VI 属性或导出预览图像的函数，以及 VI 文件头离线解析。
 
 | 导出 | 说明 |
 |---|---|
 | `readViSavedVersion` | 读取 VI 文件头中的保存版本（异步，不依赖 LabVIEW） |
 | `parseViSavedVersionHeader` | 解析 VI 文件头 Buffer，返回版本号（同步，可测试） |
-| `discoverInstalledLabVIEWs` | 通过 PowerShell 查询注册表，枚举本机已安装的 LabVIEW 版本 |
-| `exportViImages` | 调用 `save_vi_panel_image_worker.vbs` 导出 FP / BD 图像 |
-| `readViProps` | 调用 `read_vi_props_worker.vbs` 读取 VI 属性 |
-| `writeViProps` | 调用 `write_vi_props_worker.vbs` 写入 VI 属性 |
-
-**Worker 调用机制**：
-
-1. TypeScript 层通过 `child_process.spawn` 启动 `cscript.exe`，传入 `.vbs` Worker 脚本路径和参数。
-2. Worker 输出结果写入临时文件（键值行格式）。
-3. TypeScript 层读取临时文件并通过 `parsePropsResponseText`（`propsParser.ts`）解析结果。
-4. 结果组装为 JSON 信封后通过 `postMessage` 发送给 WebView。
+| `exportViPanelImages` | 调用 session host 导出 FP / BD 图像 |
+| `readViProps` | 通过 session host 读取 VI 属性 |
+| `writeViProps` | 通过 session host 写入 VI 属性 |
+| `readStaticViProps` | 离线读取静态属性（不启动 LabVIEW） |
+| `hasReusableLabVIEWConnection` | 探测现有 LabVIEW session 是否可复用 |
+| `normalizePropsEnvelope` | 修正属性信封中的已知数据异常（如 IsReentrant/ReentrancyType） |
 
 ---
 
@@ -135,7 +162,8 @@
 
 **职责**：解析 Worker 输出的键值行格式响应文件，以及 JSON 信封的序列化 / 反序列化。
 
-- `parsePropsResponseText(text)`：将 `read_vi_props_worker.vbs` / `write_vi_props_worker.vbs` 输出的文本解析为 `PropsResponse` 对象。字符串值以 Base64 UTF-8 编码传输，在此解码。
+- `parsePropsResponseText(text)`：将 session host 输出的文本解析为 `PropsResponse` 对象。字符串值以 Base64 UTF-8 编码传输，在此解码。
+- `decodeBase64Utf8(value)`：Base64 解码工具（已导出，供 `viPropsRuntime.ts` 复用）。
 - `parsePropsJson(jsonText)` / `toCachedPropsJson(envelope)`：JSON 信封的读写（用于缓存层和 WebView 通信）。
 - `parseCachedPropsJson(jsonText)`：带版本号校验的缓存 JSON 读取（版本不符时直接抛出，强制重新加载）。
 - `mergeStaticPropsIntoEnvelope`：将静态属性（文件头读取的 `SavedVersion` 等）合并进缓存的动态属性信封，防止静态属性因缓存而过时。
@@ -175,18 +203,45 @@
 
 ### `src/editor/viEditorProvider.ts` — 自定义编辑器宿主
 
-**职责**：编排缓存查询、脚本调用和 WebView 消息通信，是扩展的业务核心。
+**职责**：实现 `vscode.CustomReadonlyEditorProvider` 接口，管理文档生命周期、WebView 初始化和视图模式配置。
 
-- 实现 `vscode.CustomEditorProvider` 接口。
+- `ViEditorProvider.register(context, hooks)`：注册编辑器并监听视图模式配置变更。
+- `resolveCustomEditor(document, webviewPanel, token)`：创建 `ViEditorSession`，挂接消息监听和面板生命周期事件。
+- `renderHtml(webview)`：读取 HTML 模板，注入 CSP、nonce、初始属性 JSON 与表格行。
+
+---
+
+### `src/editor/viEditorSession.ts` — 编辑器会话
+
+**职责**：单个 VI 编辑器会话，编排缓存查询、静态/动态属性加载、预览图导出和 WebView 消息收发。
+
+- 实现串行加载队列（`_loadChain`），避免 `initialize` + `ready` 并发触发。
+- 处理 WebView 消息：`ready`、`reload`、`loadDynamicProps`、`setViewMode`、`saveProps`。
+- 监听文件系统变更（`FileSystemWatcher`），收敛去抖后自动重载。
 - 打开 VI 文件时：
   1. 查询缓存（`ViCache.entryForFile`）。
   2. 优先准备静态属性（文件名、路径、保存版本），无需连接 LabVIEW。
   3. 仅在视图模式包含预览区域时，才按需导出 FP / BD 图像。
-  4. 用户点击“读取动态属性”或执行强制刷新时，再调用 `readViProps` 拉取动态属性。
-- 处理 WebView 消息：
-  - `reload`：触发强制刷新，可重读图像与已加载的动态属性。
-  - `loadDynamicProps`：单独触发动态属性读取。
-  - `saveProps`：调用 `writeViProps`，写回 VI 后重新计算 MD5 并更新缓存。
+  4. 用户点击"读取动态属性"或执行强制刷新时，再调用 `readViProps` 拉取动态属性。
+
+---
+
+### `src/editor/viWebviewHtml.ts` — HTML 渲染工具
+
+**职责**：提供纯函数 HTML 渲染工具，不依赖 `vscode`，可单元测试。
+
+- `escapeHtml(value)`：HTML 特殊字符转义。
+- `formatPropTypeForHtml(type)`：属性类型枚举转界面显示标签。
+- `renderInitialPropsTableRows()`：生成属性表格初始加载占位行 HTML。
+
+---
+
+### `src/editor/viWebviewProtocol.ts` — WebView 消息协议
+
+**职责**：集中定义 WebView 与扩展宿主之间的消息类型约定。
+
+- `InboundMessage`：从 WebView 发往扩展宿主的消息结构。
+- `OutboundState`：从扩展宿主推送给 WebView 的完整状态快照。
 
 ---
 

@@ -28,8 +28,27 @@ vsc-labview-vi-support/
 ├── scripts/
 ├── src/
 │   ├── cache/
+│   │   ├── cacheDirectory.ts
+│   │   └── viCache.ts
 │   ├── editor/
+│   │   ├── viEditorProvider.ts
+│   │   ├── viEditorSession.ts
+│   │   ├── viWebviewHtml.ts
+│   │   ├── viWebviewProtocol.ts
+│   │   └── viewMode.ts
 │   ├── scripts/
+│   │   ├── runtime/
+│   │   │   ├── installedLabview.ts
+│   │   │   ├── viPropsRuntime.ts
+│   │   │   └── workerInvoker.ts
+│   │   ├── labviewAutomationGate.ts
+│   │   ├── labviewRuntime.ts        ← barrel re-export
+│   │   ├── labviewSession.ts
+│   │   ├── labviewStatusPresentation.ts
+│   │   ├── labviewVersionResolver.ts
+│   │   ├── propMetadata.ts
+│   │   ├── propsParser.ts
+│   │   └── scriptPaths.ts
 │   ├── test/
 │   │   └── unit/
 │   ├── extension.ts
@@ -58,8 +77,24 @@ vsc-labview-vi-support/
 - `extension.ts`：扩展入口，负责注册自定义编辑器、状态栏与命令。
 - `labviewVersionStatus.ts`：状态栏展示、版本扫描结果汇总、项目版本配置入口。
 - `cache/`：VI 内容哈希缓存目录与缓存条目管理。
-- `editor/`：自定义编辑器宿主与视图模式管理。
-- `scripts/`：运行时脚本调用、版本解析、属性元数据与响应解析。
+- `editor/`：自定义编辑器宿主与视图模式管理，细分为：
+  - `viEditorProvider.ts`：`CustomReadonlyEditorProvider` 接口实现、文档生命周期与 WebView 初始化。
+  - `viEditorSession.ts`：单个 VI 编辑器会话，负责缓存查询、静态/动态属性加载、预览图导出与消息编排。
+  - `viWebviewHtml.ts`：HTML 渲染纯函数（`escapeHtml`、`renderInitialPropsTableRows` 等），不依赖 vscode。
+  - `viWebviewProtocol.ts`：`InboundMessage` / `OutboundState` 类型定义，描述 WebView 消息协议。
+  - `viewMode.ts`：视图模式枚举与配置工具函数。
+- `scripts/`：运行时脚本调用、版本解析、属性元数据与响应解析，细分为：
+  - `runtime/workerInvoker.ts`：底层子进程调用工具（`runCommand`、`delay`），不依赖 LabVIEW。
+  - `runtime/installedLabview.ts`：本机 LabVIEW 安装探测（PowerShell + 注册表 + PE 架构读取）。
+  - `runtime/viPropsRuntime.ts`：VI 级属性读写与预览图导出（依赖 LabVIEW COM）。
+  - `labviewRuntime.ts`：barrel re-export，保持现有 import 路径兼容。
+  - `labviewSession.ts`：LabVIEW session 池，复用长连接。
+  - `labviewVersionResolver.ts`：版本解析纯逻辑（目录标记 / lvproj / VI 文件头）。
+  - `labviewStatusPresentation.ts`：状态栏文案生成纯函数。
+  - `labviewAutomationGate.ts`：串行化 LabVIEW 自动化调用队列。
+  - `propMetadata.ts`：VI 属性元数据定义与装饰函数。
+  - `propsParser.ts`：Worker 响应解析与 JSON 信封序列化/反序列化。
+  - `scriptPaths.ts`：Worker 脚本路径解析与 `selectScriptHost`（cscript.exe 路径选择）。
 - `test/`：集成测试与纯逻辑单元测试。
 
 ### `workers/`

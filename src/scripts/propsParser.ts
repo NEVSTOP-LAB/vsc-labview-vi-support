@@ -61,7 +61,7 @@ export interface PropsResponse {
   props: Record<string, PropEntry>;
 }
 
-function decodeBase64Utf8(value: string): string {
+export function decodeBase64Utf8(value: string): string {
   if (!value) {
     return '';
   }
