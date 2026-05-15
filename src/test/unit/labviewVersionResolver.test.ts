@@ -25,11 +25,16 @@ suite('labviewVersionResolver', () => {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   });
 
-  test('parses marker file names with optional bitness suffixes', () => {
+  test('parses marker file names with the compatible x86/x64 marker formats', () => {
     assert.deepStrictEqual(parseDirectoryMarkerFileName('DEV ENVIRONMENT LabVIEW 2020'), {
       major: 20,
       minor: 0,
-      architecture: undefined,
+      architecture: 'x86',
+    });
+    assert.deepStrictEqual(parseDirectoryMarkerFileName('DEV ENVIRONMENT LabVIEW 2020(64bit)'), {
+      major: 20,
+      minor: 0,
+      architecture: 'x64',
     });
     assert.deepStrictEqual(parseDirectoryMarkerFileName('DEV ENVIRONMENT LabVIEW 2020（64bit)'), {
       major: 20,
@@ -41,6 +46,8 @@ suite('labviewVersionResolver', () => {
       minor: 0,
       architecture: 'x86',
     });
+    assert.strictEqual(buildDirectoryMarkerFileName({ major: 25, minor: 0 }, 'x86'), 'DEV ENVIRONMENT LabVIEW 2025');
+    assert.strictEqual(buildDirectoryMarkerFileName({ major: 25, minor: 0 }, 'x64'), 'DEV ENVIRONMENT LabVIEW 2025(64bit)');
   });
 
   test('parses lvproj versions from common XML forms', () => {
@@ -77,7 +84,7 @@ suite('labviewVersionResolver', () => {
     const childDir = path.join(projectRoot, 'subdir');
     fs.mkdirSync(childDir, { recursive: true });
     fs.writeFileSync(path.join(projectRoot, 'DEV ENVIRONMENT LabVIEW 2020'), '');
-    fs.writeFileSync(path.join(childDir, 'DEV ENVIRONMENT LabVIEW 2025 (64bit)'), '');
+    fs.writeFileSync(path.join(childDir, 'DEV ENVIRONMENT LabVIEW 2025(64bit)'), '');
 
     const resolved = await resolveDirectoryLabVIEWVersion(childDir);
 

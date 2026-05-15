@@ -38,7 +38,7 @@ export function parseDirectoryMarkerFileName(fileName: string): Pick<ResolvedLab
 
   return {
     ...version,
-    architecture: normalizeArchitecture(match[2]),
+    architecture: normalizeArchitecture(match[2]) ?? 'x86',
   };
 }
 
@@ -115,10 +115,7 @@ export function buildDirectoryMarkerFileName(
     : `${version.major}.${version.minor}`;
 
   if (architecture === 'x64') {
-    return `DEV ENVIRONMENT LabVIEW ${versionLabel} (64bit)`;
-  }
-  if (architecture === 'x86') {
-    return `DEV ENVIRONMENT LabVIEW ${versionLabel} (32bit)`;
+    return `DEV ENVIRONMENT LabVIEW ${versionLabel}(64bit)`;
   }
   return `DEV ENVIRONMENT LabVIEW ${versionLabel}`;
 }

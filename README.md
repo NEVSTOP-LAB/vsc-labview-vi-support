@@ -34,8 +34,7 @@
 
 1. **目录标记文件**：如果当前目录或任一祖先目录存在
    `DEV ENVIRONMENT LabVIEW 2020`、
-   `DEV ENVIRONMENT LabVIEW 2020 (64bit)`、
-   `DEV ENVIRONMENT LabVIEW 2020 (32bit)` 这类文件，则该目录树优先采用
+  `DEV ENVIRONMENT LabVIEW 2020(64bit)` 这类文件，则该目录树优先采用
    这个版本。距离当前文件最近的目录标记优先。
 2. **`.lvproj` 项目文件**：如果没有目录标记，则在当前目录到根目录的链路上
    查找 `.lvproj`，并从 XML 中的版本字段解析目标版本；距离当前文件最近的
@@ -85,10 +84,9 @@ LabVIEW 通信，因此：
 点击状态栏里的 `LabVIEW: ...` 按钮后，扩展会枚举注册表中已安装的 LabVIEW
 版本，并允许把选中的版本写成根目录标记文件。当前实现采用以下约定：
 
-- 64 位安装写成 `DEV ENVIRONMENT LabVIEW 2020 (64bit)`。
-- 32 位安装在需要显式区分时写成 `DEV ENVIRONMENT LabVIEW 2020 (32bit)`。
-- 手工创建的 `DEV ENVIRONMENT LabVIEW 2020` 仍然被识别，表示只锁定版本、
-  不显式指定位数。
+- 32 位安装写成 `DEV ENVIRONMENT LabVIEW 2020`。
+- 64 位安装写成 `DEV ENVIRONMENT LabVIEW 2020(64bit)`。
+- 旧格式 `DEV ENVIRONMENT LabVIEW 2020 (32bit)` 与 `DEV ENVIRONMENT LabVIEW 2020 (64bit)` 仍然会被识别，用于兼容已有项目。
 
 ## 运行时链路的当前状态
 
