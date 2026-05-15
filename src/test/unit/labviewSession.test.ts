@@ -6,6 +6,10 @@ import {
   probeLabVIEWSession,
 } from '../../scripts/labviewSession';
 
+function toBase64Utf8(text: string): string {
+  return Buffer.from(text, 'utf8').toString('base64');
+}
+
 suite('labviewSession', () => {
   test('builds a case-insensitive session key from target paths', () => {
     const left = buildLabVIEWSessionKey({
@@ -26,22 +30,35 @@ suite('labviewSession', () => {
     assert.strictEqual(left, right);
   });
 
-  test('serializes request lines with timeout and optional fields', () => {
+  test('serializes path-like request fields as base64 utf8', () => {
     const lines = buildLabVIEWSessionRequestLines({
       command: 'export-panels',
-      viPath: 'C:\\repo\\demo.vi',
-      fpOutputPath: 'C:\\tmp\\demo-fp.png',
-      bdOutputPath: 'C:\\tmp\\demo-bd.png',
+      viPath: 'C:\\仓库\\示例.vi',
+      fpOutputPath: 'C:\\导出\\前面板.png',
+      bdOutputPath: 'C:\\导出\\程序框图.png',
       timeoutMs: 90_000,
     });
 
     assert.deepStrictEqual(lines, [
       'command=export-panels',
       'timeoutSeconds=90',
-      'viPath=C:\\repo\\demo.vi',
-      'fpOutputPath=C:\\tmp\\demo-fp.png',
-      'bdOutputPath=C:\\tmp\\demo-bd.png',
+      `viPath_b64=${toBase64Utf8('C:\\仓库\\示例.vi')}`,
+      `fpOutputPath_b64=${toBase64Utf8('C:\\导出\\前面板.png')}`,
+      `bdOutputPath_b64=${toBase64Utf8('C:\\导出\\程序框图.png')}`,
     ]);
+  });
+
+  test('serializes requestPath as base64 utf8 when present', () => {
+    const lines = buildLabVIEWSessionRequestLines({
+      command: 'write-props',
+      viPath: 'C:\\repo\\demo.vi',
+      requestPath: 'C:\\临时\\写入请求.in',
+      save: true,
+    });
+
+    assert.strictEqual(lines[2], `viPath_b64=${toBase64Utf8('C:\\repo\\demo.vi')}`);
+    assert.strictEqual(lines[3], `requestPath_b64=${toBase64Utf8('C:\\临时\\写入请求.in')}`);
+    assert.strictEqual(lines[4], 'save=1');
   });
 
   test('clamps short timeouts to the minimum worker timeout', () => {

@@ -56,21 +56,25 @@ export function buildLabVIEWSessionRequestLines(request: LabVIEWSessionRequest):
   const lines = [
     `command=${request.command}`,
     `timeoutSeconds=${timeoutSeconds}`,
-    `viPath=${request.viPath}`,
+    `viPath_b64=${encodeBase64Utf8(request.viPath)}`,
   ];
   if (request.requestPath) {
-    lines.push(`requestPath=${request.requestPath}`);
+    lines.push(`requestPath_b64=${encodeBase64Utf8(request.requestPath)}`);
   }
   if (request.fpOutputPath) {
-    lines.push(`fpOutputPath=${request.fpOutputPath}`);
+    lines.push(`fpOutputPath_b64=${encodeBase64Utf8(request.fpOutputPath)}`);
   }
   if (request.bdOutputPath) {
-    lines.push(`bdOutputPath=${request.bdOutputPath}`);
+    lines.push(`bdOutputPath_b64=${encodeBase64Utf8(request.bdOutputPath)}`);
   }
   if (typeof request.save === 'boolean') {
     lines.push(`save=${request.save ? '1' : '0'}`);
   }
   return lines;
+}
+
+function encodeBase64Utf8(value: string): string {
+  return Buffer.from(value, 'utf8').toString('base64');
 }
 
 export async function requestLabVIEWSession(

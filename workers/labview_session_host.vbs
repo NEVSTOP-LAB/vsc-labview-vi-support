@@ -2,6 +2,7 @@ Option Explicit
 
 Const REQUEST_SUFFIX_TYPE = "_type"
 Const REQUEST_SUFFIX_VAL  = "_val"
+Const REQUEST_SUFFIX_B64  = "_b64"
 Const REQUEST_PART_TYPE   = "type"
 Const REQUEST_PART_VAL    = "val"
 
@@ -107,7 +108,11 @@ Function ReadRequest()
         If eqPos > 0 Then
             key = LCase(Left(line, eqPos - 1))
             value = Mid(line, eqPos + 1)
-            request.Item(key) = value
+            If Len(key) > Len(REQUEST_SUFFIX_B64) And Right(key, Len(REQUEST_SUFFIX_B64)) = REQUEST_SUFFIX_B64 Then
+                request.Item(Left(key, Len(key) - Len(REQUEST_SUFFIX_B64))) = DecodeBase64Utf8(value)
+            Else
+                request.Item(key) = value
+            End If
         End If
     Loop
 
