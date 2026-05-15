@@ -35,14 +35,26 @@ Set app = Nothing
 Set writableMeta = CreateObject("Scripting.Dictionary")
 writableMeta.CompareMode = 1
 writableMeta.Add "Description", "String|vi"
-writableMeta.Add "HistoryText", "String|vi"
-writableMeta.Add "AllowDebugging", "Boolean|vi"
-writableMeta.Add "ShowFPOnCall", "Boolean|vi"
-writableMeta.Add "CloseFPAfterCall", "Boolean|vi"
-writableMeta.Add "IsReentrant", "Boolean|vi"
+writableMeta.Add "EditMode", "Boolean|vi"
 writableMeta.Add "RunOnOpen", "Boolean|vi"
 writableMeta.Add "PreferredExecSystem", "Number|vi"
-writableMeta.Add "ExecPriority", "Number|vi"
+writableMeta.Add "ShowFPOnCall", "Boolean|vi"
+writableMeta.Add "ShowFPOnLoad", "Boolean|vi"
+writableMeta.Add "AllowDebugging", "Boolean|vi"
+writableMeta.Add "IsReentrant", "Boolean|vi"
+writableMeta.Add "ReentrancyType", "Number|vi"
+writableMeta.Add "CloseFPAfterCall", "Boolean|vi"
+writableMeta.Add "FPWinTitle", "String|vi"
+writableMeta.Add "FPRunTransparently", "Boolean|vi"
+writableMeta.Add "FPTransparency", "Number|vi"
+writableMeta.Add "FPResizable", "Boolean|vi"
+writableMeta.Add "FPMinimizable", "Boolean|vi"
+writableMeta.Add "FPShowMenuBar", "Boolean|vi"
+writableMeta.Add "TBVisible", "Boolean|vi"
+writableMeta.Add "TBShowRunButton", "Boolean|vi"
+writableMeta.Add "TBShowAbortButton", "Boolean|vi"
+writableMeta.Add "FPWinIsFrontMost", "Boolean|vi"
+writableMeta.Add "FPWinClosable", "Boolean|vi"
 
 On Error Resume Next
 Main
@@ -116,6 +128,8 @@ Sub HandleRequest(ByRef request)
 
     On Error Resume Next
     Select Case command
+        Case "probe-session"
+            HandleProbeSession request
         Case "read-props"
             HandleReadProps request, timeoutSeconds
         Case "write-props"
@@ -132,6 +146,27 @@ Sub HandleRequest(ByRef request)
         Err.Clear
     End If
     On Error GoTo 0
+End Sub
+
+Sub HandleProbeSession(ByRef request)
+    Dim mismatchMessage
+
+    mismatchMessage = ""
+
+    If HasReusableSessionApp() Then
+        WriteFramedResponse BuildBaseResponse(True)
+    ElseIf TryReuseRunningLabVIEW(mismatchMessage) Then
+        WriteFramedResponse BuildBaseResponse(True)
+    Else
+        If Len(mismatchMessage) > 0 Then
+            selection = "failed-to-match-target-labview-application"
+            reason = mismatchMessage
+        Else
+            selection = "no-reusable-session-labview-application"
+            reason = "No reusable or already running LabVIEW session is available."
+        End If
+        WriteFramedResponse BuildBaseResponse(False)
+    End If
 End Sub
 
 Sub HandleReadProps(ByRef request, ByVal timeoutSeconds)
@@ -538,34 +573,34 @@ Function BuildReadPropsLines(ByRef viRef)
     AppendPropLine responseText, "Path", "String", ok, val, errMsg
 
     val = "" : Err.Clear
+    val = ReadOwningAppSummary(viRef)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "OwningApp", "String", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.VIType)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "VIType", "Number", ok, val, errMsg
+
+    val = "" : Err.Clear
     val = CStr(viRef.Description)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
     AppendPropLine responseText, "Description", "String", ok, val, errMsg
 
     val = "" : Err.Clear
-    val = CStr(viRef.HistoryText)
+    val = CStr(viRef.RevisionNumber)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    AppendPropLine responseText, "HistoryText", "String", ok, val, errMsg
+    AppendPropLine responseText, "RevisionNumber", "String", ok, val, errMsg
 
     val = "" : Err.Clear
-    val = CStr(viRef.AllowDebugging)
+    val = CStr(viRef.EditMode)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    AppendPropLine responseText, "AllowDebugging", "Boolean", ok, val, errMsg
+    AppendPropLine responseText, "EditMode", "Boolean", ok, val, errMsg
 
     val = "" : Err.Clear
-    val = CStr(viRef.ShowFPOnCall)
+    val = CStr(viRef.ExecState)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    AppendPropLine responseText, "ShowFPOnCall", "Boolean", ok, val, errMsg
-
-    val = "" : Err.Clear
-    val = CStr(viRef.CloseFPAfterCall)
-    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    AppendPropLine responseText, "CloseFPAfterCall", "Boolean", ok, val, errMsg
-
-    val = "" : Err.Clear
-    val = CStr(viRef.IsReentrant)
-    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    AppendPropLine responseText, "IsReentrant", "Boolean", ok, val, errMsg
+    AppendPropLine responseText, "ExecState", "Number", ok, val, errMsg
 
     val = "" : Err.Clear
     val = CStr(viRef.RunOnOpen)
@@ -578,9 +613,114 @@ Function BuildReadPropsLines(ByRef viRef)
     AppendPropLine responseText, "PreferredExecSystem", "Number", ok, val, errMsg
 
     val = "" : Err.Clear
-    val = CStr(viRef.ExecPriority)
+    val = CStr(viRef.ShowFPOnCall)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    AppendPropLine responseText, "ExecPriority", "Number", ok, val, errMsg
+    AppendPropLine responseText, "ShowFPOnCall", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.ShowFPOnLoad)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "ShowFPOnLoad", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.AllowDebugging)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "AllowDebugging", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.IsReentrant)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "IsReentrant", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.ReentrancyType)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "ReentrancyType", "Number", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.CloseFPAfterCall)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "CloseFPAfterCall", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.FPState)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "FPState", "Number", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = FormatBoundsValue(viRef.FPWinBounds)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "FPWinBounds", "String", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.FPWinTitle)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "FPWinTitle", "String", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.FPRunTransparently)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "FPRunTransparently", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.FPTransparency)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "FPTransparency", "Number", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.FPResizable)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "FPResizable", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.FPMinimizable)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "FPMinimizable", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.FPShowMenuBar)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "FPShowMenuBar", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.TBVisible)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "TBVisible", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.TBShowRunButton)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "TBShowRunButton", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.TBShowAbortButton)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "TBShowAbortButton", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.FPWinClosable)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "FPWinClosable", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.BDSize)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "BDSize", "Number", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.FPSize)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "FPSize", "Number", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.CodeSize)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "CodeSize", "Number", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(viRef.DataSize)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    AppendPropLine responseText, "DataSize", "Number", ok, val, errMsg
 
     On Error GoTo 0
     BuildReadPropsLines = responseText
@@ -663,14 +803,26 @@ End Sub
 Sub AssignProp(ByRef viRef, ByVal propName, ByVal newVal)
     Select Case propName
         Case "Description"         : viRef.Description = CStr(newVal)
-        Case "HistoryText"         : viRef.HistoryText = CStr(newVal)
-        Case "AllowDebugging"      : viRef.AllowDebugging = CoerceBool(newVal)
-        Case "ShowFPOnCall"        : viRef.ShowFPOnCall = CoerceBool(newVal)
-        Case "CloseFPAfterCall"    : viRef.CloseFPAfterCall = CoerceBool(newVal)
-        Case "IsReentrant"         : viRef.IsReentrant = CoerceBool(newVal)
+        Case "EditMode"            : viRef.EditMode = CoerceBool(newVal)
         Case "RunOnOpen"           : viRef.RunOnOpen = CoerceBool(newVal)
         Case "PreferredExecSystem" : viRef.PreferredExecSystem = CLng(newVal)
-        Case "ExecPriority"        : viRef.ExecPriority = CLng(newVal)
+        Case "ShowFPOnCall"        : viRef.ShowFPOnCall = CoerceBool(newVal)
+        Case "ShowFPOnLoad"        : viRef.ShowFPOnLoad = CoerceBool(newVal)
+        Case "AllowDebugging"      : viRef.AllowDebugging = CoerceBool(newVal)
+        Case "IsReentrant"         : viRef.IsReentrant = CoerceBool(newVal)
+        Case "ReentrancyType"      : viRef.ReentrancyType = CLng(newVal)
+        Case "CloseFPAfterCall"    : viRef.CloseFPAfterCall = CoerceBool(newVal)
+        Case "FPWinTitle"          : viRef.FPWinTitle = CStr(newVal)
+        Case "FPRunTransparently"  : viRef.FPRunTransparently = CoerceBool(newVal)
+        Case "FPTransparency"      : viRef.FPTransparency = CLng(newVal)
+        Case "FPResizable"         : viRef.FPResizable = CoerceBool(newVal)
+        Case "FPMinimizable"       : viRef.FPMinimizable = CoerceBool(newVal)
+        Case "FPShowMenuBar"       : viRef.FPShowMenuBar = CoerceBool(newVal)
+        Case "TBVisible"           : viRef.TBVisible = CoerceBool(newVal)
+        Case "TBShowRunButton"     : viRef.TBShowRunButton = CoerceBool(newVal)
+        Case "TBShowAbortButton"   : viRef.TBShowAbortButton = CoerceBool(newVal)
+        Case "FPWinIsFrontMost"    : viRef.FPWinIsFrontMost = CoerceBool(newVal)
+        Case "FPWinClosable"       : viRef.FPWinClosable = CoerceBool(newVal)
         Case Else
             Err.Raise vbObjectError + 301, , "Unsupported property: " & propName
     End Select
@@ -683,14 +835,29 @@ Function ReadBackVi(ByRef viRef, ByVal propName)
     On Error Resume Next
     Select Case propName
         Case "Description"         : val = CStr(viRef.Description)
-        Case "HistoryText"         : val = CStr(viRef.HistoryText)
-        Case "AllowDebugging"      : val = CStr(viRef.AllowDebugging)
-        Case "ShowFPOnCall"        : val = CStr(viRef.ShowFPOnCall)
-        Case "CloseFPAfterCall"    : val = CStr(viRef.CloseFPAfterCall)
-        Case "IsReentrant"         : val = CStr(viRef.IsReentrant)
+        Case "RevisionNumber"      : val = CStr(viRef.RevisionNumber)
+        Case "EditMode"            : val = CStr(viRef.EditMode)
         Case "RunOnOpen"           : val = CStr(viRef.RunOnOpen)
         Case "PreferredExecSystem" : val = CStr(viRef.PreferredExecSystem)
-        Case "ExecPriority"        : val = CStr(viRef.ExecPriority)
+        Case "ShowFPOnCall"        : val = CStr(viRef.ShowFPOnCall)
+        Case "ShowFPOnLoad"        : val = CStr(viRef.ShowFPOnLoad)
+        Case "AllowDebugging"      : val = CStr(viRef.AllowDebugging)
+        Case "IsReentrant"         : val = CStr(viRef.IsReentrant)
+        Case "ReentrancyType"      : val = CStr(viRef.ReentrancyType)
+        Case "CloseFPAfterCall"    : val = CStr(viRef.CloseFPAfterCall)
+        Case "FPState"             : val = CStr(viRef.FPState)
+        Case "FPWinBounds"         : val = FormatBoundsValue(viRef.FPWinBounds)
+        Case "FPWinTitle"          : val = CStr(viRef.FPWinTitle)
+        Case "FPRunTransparently"  : val = CStr(viRef.FPRunTransparently)
+        Case "FPTransparency"      : val = CStr(viRef.FPTransparency)
+        Case "FPResizable"         : val = CStr(viRef.FPResizable)
+        Case "FPMinimizable"       : val = CStr(viRef.FPMinimizable)
+        Case "FPShowMenuBar"       : val = CStr(viRef.FPShowMenuBar)
+        Case "TBVisible"           : val = CStr(viRef.TBVisible)
+        Case "TBShowRunButton"     : val = CStr(viRef.TBShowRunButton)
+        Case "TBShowAbortButton"   : val = CStr(viRef.TBShowAbortButton)
+        Case "FPWinIsFrontMost"    : val = ""
+        Case "FPWinClosable"       : val = CStr(viRef.FPWinClosable)
     End Select
     If Err.Number <> 0 Then
         val = ""
@@ -698,6 +865,37 @@ Function ReadBackVi(ByRef viRef, ByVal propName)
     End If
     On Error GoTo 0
     ReadBackVi = val
+End Function
+
+Function ReadOwningAppSummary(ByRef viRef)
+    Dim owningApp
+    Dim appDir
+    Dim appVer
+
+    ReadOwningAppSummary = ""
+    Set owningApp = Nothing
+
+    On Error Resume Next
+    Err.Clear
+    Set owningApp = viRef.OwningApp
+    If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        Exit Function
+    End If
+
+    appDir = SafeGetAppDirectory(owningApp)
+    appVer = SafeGetAppVersion(owningApp)
+    If Len(appVer) > 0 And Len(appDir) > 0 Then
+        ReadOwningAppSummary = appVer & " | " & appDir
+    ElseIf Len(appDir) > 0 Then
+        ReadOwningAppSummary = appDir
+    Else
+        ReadOwningAppSummary = appVer
+    End If
+
+    ReleaseComObject owningApp
+    On Error GoTo 0
 End Function
 
 Function CoerceBool(ByVal value)
@@ -711,6 +909,33 @@ Function CoerceBool(ByVal value)
     Else
         CoerceBool = CBool(value)
     End If
+End Function
+
+Function FormatBoundsValue(ByVal bounds)
+    Dim lowerBound
+    Dim upperBound
+    Dim index
+    Dim parts()
+
+    On Error Resume Next
+    If IsArray(bounds) Then
+        lowerBound = LBound(bounds)
+        upperBound = UBound(bounds)
+        If Err.Number = 0 Then
+            ReDim parts(upperBound - lowerBound)
+            For index = lowerBound To upperBound
+                parts(index - lowerBound) = CStr(bounds(index))
+            Next
+            If Err.Number = 0 Then
+                FormatBoundsValue = Join(parts, ",")
+                On Error GoTo 0
+                Exit Function
+            End If
+            Err.Clear
+        End If
+    End If
+    FormatBoundsValue = CStr(bounds)
+    On Error GoTo 0
 End Function
 
 Sub ExportPanelImages(ByRef viRef, ByVal fpFinalOutputPath, ByVal bdFinalOutputPath, ByRef exportedOutputPath, ByRef exportedFpOutputPath, ByRef exportedBdOutputPath)

@@ -3,6 +3,7 @@ import * as assert from 'assert';
 import {
   buildLabVIEWSessionKey,
   buildLabVIEWSessionRequestLines,
+  probeLabVIEWSession,
 } from '../../scripts/labviewSession';
 
 suite('labviewSession', () => {
@@ -51,5 +52,17 @@ suite('labviewSession', () => {
     });
 
     assert.strictEqual(lines[1], 'timeoutSeconds=45');
+  });
+
+  test('probeLabVIEWSession returns null when no tracked session exists', async () => {
+    const response = await probeLabVIEWSession({
+      scriptHost: 'C:/Windows/System32/cscript.exe',
+      sessionHostScript: 'D:/ext/workers/labview_session_host.vbs',
+      targetExe: 'C:/Program Files/National Instruments/LabVIEW 2025/LabVIEW.exe',
+      expectedDirectory: 'C:/Program Files/National Instruments/LabVIEW 2025',
+      expectedVersion: '25.0',
+    }, 'C:\\repo\\demo.vi');
+
+    assert.strictEqual(response, null);
   });
 });

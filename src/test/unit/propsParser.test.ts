@@ -28,12 +28,12 @@ suite('propsParser.parsePropsResponseText', () => {
       'prop_Description_type=String',
       'prop_Description_ok=1',
       `prop_Description_val=${b64('多行\n描述')}`,
-      'prop_Priority_type=Number',
-      'prop_Priority_ok=1',
-      `prop_Priority_val=${b64('1')}`,
-      'prop_HistoryText_type=String',
-      'prop_HistoryText_ok=0',
-      `prop_HistoryText_errmsg=${b64('Not available.')}`,
+      'prop_VIType_type=Number',
+      'prop_VIType_ok=1',
+      `prop_VIType_val=${b64('1')}`,
+      'prop_FPWinClosable_type=Boolean',
+      'prop_FPWinClosable_ok=0',
+      `prop_FPWinClosable_errmsg=${b64('Not available.')}`,
     ].join('\r\n');
 
     const r = parsePropsResponseText(lines);
@@ -45,11 +45,11 @@ suite('propsParser.parsePropsResponseText', () => {
     assert.strictEqual(r.props['Name'].ok, true);
     assert.strictEqual(r.props['Name'].value, 'main.vi');
     assert.strictEqual(r.props['Description'].value, '多行\n描述');
-    assert.strictEqual(r.props['Priority'].type, 'Number');
-    assert.strictEqual(r.props['Priority'].value, '1');
-    assert.strictEqual(r.props['HistoryText'].ok, false);
-    assert.strictEqual(r.props['HistoryText'].error, 'Not available.');
-    assert.strictEqual(r.props['HistoryText'].value, null);
+    assert.strictEqual(r.props['VIType'].type, 'Number');
+    assert.strictEqual(r.props['VIType'].value, '1');
+    assert.strictEqual(r.props['FPWinClosable'].ok, false);
+    assert.strictEqual(r.props['FPWinClosable'].error, 'Not available.');
+    assert.strictEqual(r.props['FPWinClosable'].value, null);
   });
 
   test('parses a write-worker response with saved=0', () => {
@@ -113,12 +113,12 @@ suite('propsParser.parsePropsJson', () => {
       props: {
         Description: {
           ok: true, type: 'String', value: 'd', error: null,
-          loaded: true, writable: true, description: 'desc', displayName: '说明', group: 'identity', groupLabel: '基础信息',
+          loaded: true, writable: true, accessMode: 'readwrite', description: 'desc', displayName: '说明', group: 'general', groupLabel: '通用信息',
           source: 'dynamic', sourceLabel: '动态', sourceDescription: '动态属性',
         },
-        ExecPriority: {
-          ok: true, type: 'Number', value: '1', error: null,
-          loaded: true, writable: true, description: 'p', displayName: '执行优先级', group: 'execution', groupLabel: '执行设置',
+        FPWinIsFrontMost: {
+          ok: true, type: 'Boolean', value: null, error: null,
+          loaded: true, writable: true, accessMode: 'writeonly', description: 'front', displayName: '前面板置顶', group: 'panel', groupLabel: '前面板窗口外观与行为',
           source: 'dynamic', sourceLabel: '动态', sourceDescription: '动态属性',
         },
       },
@@ -127,11 +127,12 @@ suite('propsParser.parsePropsJson', () => {
     assert.strictEqual(env.lvVersion, '17.0');
     assert.strictEqual(env.dynamicPropsLoaded, true);
     assert.strictEqual(env.props['Description'].writable, true);
+    assert.strictEqual(env.props['Description'].accessMode, 'readwrite');
     assert.strictEqual(env.props['Description'].loaded, true);
     assert.strictEqual(env.props['Description'].displayName, '说明');
     assert.strictEqual(env.props['Description'].source, 'dynamic');
-    assert.strictEqual(env.props['ExecPriority'].groupLabel, '执行设置');
-    assert.strictEqual(env.props['ExecPriority'].value, '1');
+    assert.strictEqual(env.props['FPWinIsFrontMost'].groupLabel, '前面板窗口外观与行为');
+    assert.strictEqual(env.props['FPWinIsFrontMost'].accessMode, 'writeonly');
   });
 
   test('accepts the write envelope (saved/save_error)', () => {
@@ -165,6 +166,22 @@ suite('propsParser cached props JSON', () => {
       saved: true,
       saveError: '',
       props: {
+        SavedVersion: {
+          ok: true,
+          type: 'String',
+          value: '17.0',
+          error: null,
+          loaded: true,
+          writable: false,
+          accessMode: 'readonly',
+          description: '从 VI 文件头侦测到的保存版本，不通过 COM 读取。',
+          displayName: '侦测到的VI版本',
+          group: 'general',
+          groupLabel: '通用信息',
+          source: 'static',
+          sourceLabel: '静态',
+          sourceDescription: '静态属性：可直接离线读取，不需要启动 LabVIEW。',
+        },
         Description: {
           ok: true,
           type: 'String',
@@ -172,10 +189,11 @@ suite('propsParser cached props JSON', () => {
           error: null,
           loaded: false,
           writable: true,
-          description: 'VI 描述（属性对话框中的说明文字）',
+          accessMode: 'readwrite',
+          description: 'VI 的描述信息。',
           displayName: '说明',
-          group: 'identity',
-          groupLabel: '基础信息',
+          group: 'general',
+          groupLabel: '通用信息',
           source: 'dynamic',
           sourceLabel: '动态',
           sourceDescription: '动态属性：需要通过 LabVIEW VI Server 读取，按需加载时可能触发 LabVIEW 窗口。',
@@ -186,24 +204,51 @@ suite('propsParser cached props JSON', () => {
     assert.strictEqual(cached['_cacheVersion'], PROPS_CACHE_VERSION);
     assert.strictEqual(cached['dynamic_props_loaded'], false);
     const parsed = parseCachedPropsJson(JSON.stringify(cached));
-    assert.strictEqual(parsed.props['Description'].description, 'VI 描述（属性对话框中的说明文字）');
+    assert.strictEqual(parsed.props['SavedVersion'].value, '17.0');
+    assert.strictEqual(parsed.props['SavedVersion'].source, 'static');
+    assert.strictEqual(parsed.props['Description'].description, 'VI 的描述信息。');
     assert.strictEqual(parsed.props['Description'].displayName, '说明');
-    assert.strictEqual(parsed.props['Description'].groupLabel, '基础信息');
+    assert.strictEqual(parsed.props['Description'].groupLabel, '通用信息');
     assert.strictEqual(parsed.props['Description'].loaded, false);
+    assert.strictEqual(parsed.props['Description'].accessMode, 'readwrite');
     assert.strictEqual(parsed.props['Description'].source, 'dynamic');
     assert.strictEqual(parsed.dynamicPropsLoaded, false);
     assert.strictEqual(parsed.saved, true);
   });
 
-  test('rejects stale cache entries without the cache version marker', () => {
+  test('accepts compatible cache entries without the cache version marker', () => {
+    const parsed = parseCachedPropsJson(JSON.stringify({
+      vi_path: 'C:\\path\\main.vi',
+      lv_version: '17.0',
+      props: {},
+    }));
+
+    assert.strictEqual(parsed.viPath, 'C:\\path\\main.vi');
+    assert.deepStrictEqual(parsed.props, {});
+  });
+
+  test('accepts compatible cache entries with an old cache version marker', () => {
+    const parsed = parseCachedPropsJson(JSON.stringify({
+      _cacheVersion: PROPS_CACHE_VERSION - 1,
+      vi_path: 'C:\\path\\main.vi',
+      lv_version: '17.0',
+      props: {},
+    }));
+
+    assert.strictEqual(parsed.viPath, 'C:\\path\\main.vi');
+    assert.deepStrictEqual(parsed.props, {});
+  });
+
+  test('rejects cache entries with an invalid cache version marker', () => {
     assert.throws(() => parseCachedPropsJson(JSON.stringify({
+      _cacheVersion: 'legacy',
       vi_path: 'C:\\path\\main.vi',
       lv_version: '17.0',
       props: {},
     })));
   });
 
-  test('merges refreshed static props without dropping cached dynamic props', () => {
+  test('merges refreshed static props, preserves cached values, and fills new entries as unread', () => {
     const merged = mergeStaticPropsIntoEnvelope(
       {
         viPath: 'C:\\old\\main.vi',
@@ -214,26 +259,6 @@ suite('propsParser cached props JSON', () => {
             ok: true,
             type: 'String',
             value: 'main.vi',
-            error: null,
-            loaded: true,
-            writable: false,
-            source: 'static',
-            sourceLabel: '静态',
-          },
-          Path: {
-            ok: true,
-            type: 'String',
-            value: 'C:\\old\\main.vi',
-            error: null,
-            loaded: true,
-            writable: false,
-            source: 'static',
-            sourceLabel: '静态',
-          },
-          SavedVersion: {
-            ok: true,
-            type: 'String',
-            value: '17.0',
             error: null,
             loaded: true,
             writable: false,
@@ -277,16 +302,6 @@ suite('propsParser cached props JSON', () => {
             source: 'static',
             sourceLabel: '静态',
           },
-          SavedVersion: {
-            ok: true,
-            type: 'String',
-            value: '17.0',
-            error: null,
-            loaded: true,
-            writable: false,
-            source: 'static',
-            sourceLabel: '静态',
-          },
           Description: {
             ok: true,
             type: 'String',
@@ -297,16 +312,40 @@ suite('propsParser cached props JSON', () => {
             source: 'dynamic',
             sourceLabel: '动态',
           },
+          RevisionNumber: {
+            ok: true,
+            type: 'String',
+            value: null,
+            error: null,
+            loaded: false,
+            writable: true,
+            source: 'dynamic',
+            sourceLabel: '动态',
+          },
+          SavedVersion: {
+            ok: true,
+            type: 'String',
+            value: '17.0',
+            error: null,
+            loaded: true,
+            writable: false,
+            source: 'static',
+            sourceLabel: '静态',
+          },
         },
       },
     );
 
     assert.strictEqual(merged.viPath, 'C:\\new\\renamed.vi');
     assert.strictEqual(merged.dynamicPropsLoaded, true);
+    assert.deepStrictEqual(Object.keys(merged.props), ['Name', 'Path', 'Description', 'RevisionNumber', 'SavedVersion']);
     assert.strictEqual(merged.props['Name'].value, 'renamed.vi');
     assert.strictEqual(merged.props['Path'].value, 'C:\\new\\renamed.vi');
+    assert.strictEqual(merged.props['SavedVersion'].value, '17.0');
     assert.strictEqual(merged.props['Description'].value, 'cached description');
     assert.strictEqual(merged.props['Description'].loaded, true);
+    assert.strictEqual(merged.props['RevisionNumber'].loaded, false);
+    assert.strictEqual(merged.props['RevisionNumber'].value, null);
   });
 
   test('merges write results without dropping untouched props', () => {
@@ -336,10 +375,10 @@ suite('propsParser cached props JSON', () => {
             source: 'dynamic',
             sourceLabel: '动态',
           },
-          HistoryText: {
+          FPWinTitle: {
             ok: true,
             type: 'String',
-            value: 'kept history',
+            value: 'kept title',
             error: null,
             loaded: true,
             writable: true,
@@ -373,7 +412,7 @@ suite('propsParser cached props JSON', () => {
     assert.strictEqual(merged.saveError, '');
     assert.strictEqual(merged.lvVersion, '25.3.2f2');
     assert.strictEqual(merged.props['Description'].value, 'new description');
-    assert.strictEqual(merged.props['HistoryText'].value, 'kept history');
+    assert.strictEqual(merged.props['FPWinTitle'].value, 'kept title');
     assert.strictEqual(merged.props['Name'].value, 'main.vi');
   });
 });

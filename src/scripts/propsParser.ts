@@ -27,6 +27,7 @@
 
 export type PropType = 'String' | 'Boolean' | 'Number';
 export type PropSource = 'static' | 'dynamic';
+export type PropAccess = 'readonly' | 'readwrite' | 'writeonly';
 
 export interface PropEntry {
   ok: boolean;
@@ -36,6 +37,7 @@ export interface PropEntry {
   loaded?: boolean;
   /** Filled in by the runtime metadata layer. */
   writable?: boolean;
+  accessMode?: PropAccess;
   description?: string;
   displayName?: string;
   group?: string;
@@ -146,7 +148,7 @@ export interface PropsJsonEnvelope {
   props: Record<string, PropEntry>;
 }
 
-export const PROPS_CACHE_VERSION = 3;
+export const PROPS_CACHE_VERSION = 5;
 
 export function toCachedPropsJson(envelope: PropsJsonEnvelope): Record<string, unknown> {
   const cached: Record<string, unknown> = {
@@ -189,6 +191,7 @@ export function parsePropsJson(jsonText: string): PropsJsonEnvelope {
       error:       (entry['error'] as string | null) ?? null,
       loaded:      typeof entry['loaded']      === 'boolean' ? entry['loaded']      as boolean : undefined,
       writable:    typeof entry['writable']    === 'boolean' ? entry['writable']    as boolean : undefined,
+      accessMode:  typeof entry['accessMode']  === 'string'  ? entry['accessMode']  as PropAccess : undefined,
       description: typeof entry['description'] === 'string'  ? entry['description'] as string  : undefined,
       displayName: typeof entry['displayName'] === 'string'  ? entry['displayName'] as string  : undefined,
       group:       typeof entry['group']       === 'string'  ? entry['group']       as string  : undefined,
@@ -222,8 +225,15 @@ export function parseCachedPropsJson(jsonText: string): PropsJsonEnvelope {
     throw new Error('Cached props JSON must be an object.');
   }
   const obj = parsed as Record<string, unknown>;
-  if (obj['_cacheVersion'] !== PROPS_CACHE_VERSION) {
-    throw new Error(`Props cache version mismatch: expected ${PROPS_CACHE_VERSION}.`);
+  if ('_cacheVersion' in obj) {
+    if (!Number.isInteger(obj['_cacheVersion'])) {
+      throw new Error('Props cache version must be an integer when present.');
+    }
+    if ((obj['_cacheVersion'] as number) > PROPS_CACHE_VERSION) {
+      throw new Error(
+        `Props cache version ${String(obj['_cacheVersion'])} is newer than supported version ${PROPS_CACHE_VERSION}.`,
+      );
+    }
   }
   return parsePropsJson(jsonText);
 }
@@ -232,19 +242,31 @@ export function mergeStaticPropsIntoEnvelope(
   envelope: PropsJsonEnvelope,
   staticEnvelope: PropsJsonEnvelope,
 ): PropsJsonEnvelope {
-  // Drop all stale static entries from the cached envelope first so that
-  // removed or renamed static props do not silently persist across refreshes.
-  const props: typeof envelope.props = {};
+  // Rebuild the property map in the current metadata order so cache upgrades
+  // can keep old values while exposing newly added entries as unread.
+  const cachedDynamicProps: typeof envelope.props = {};
   for (const [name, entry] of Object.entries(envelope.props)) {
     if (entry.source !== 'static') {
-      props[name] = entry;
+      cachedDynamicProps[name] = entry;
     }
   }
+
+  const props: typeof envelope.props = {};
   for (const [name, entry] of Object.entries(staticEnvelope.props)) {
     if (entry.source === 'static') {
       props[name] = entry;
+      continue;
+    }
+
+    props[name] = cachedDynamicProps[name] ?? entry;
+  }
+
+  for (const [name, entry] of Object.entries(cachedDynamicProps)) {
+    if (!(name in props)) {
+      props[name] = entry;
     }
   }
+
   return {
     ...envelope,
     viPath: staticEnvelope.viPath,
