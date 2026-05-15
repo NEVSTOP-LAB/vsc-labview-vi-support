@@ -911,28 +911,6 @@ Function CoerceBool(ByVal value)
     End If
 End Function
 
-Function CoerceBounds(ByVal value)
-    Dim normalized
-    Dim parts
-    Dim bounds(3)
-    Dim index
-
-    normalized = Replace(Replace(Trim(CStr(value)), " ", ""), vbTab, "")
-    If Len(normalized) = 0 Then
-        Err.Raise vbObjectError + 302, , "FPWinBounds requires four comma-separated integers."
-    End If
-
-    parts = Split(normalized, ",")
-    If UBound(parts) <> 3 Then
-        Err.Raise vbObjectError + 303, , "FPWinBounds requires four comma-separated integers."
-    End If
-
-    For index = 0 To 3
-        bounds(index) = CLng(parts(index))
-    Next
-    CoerceBounds = bounds
-End Function
-
 Function FormatBoundsValue(ByVal bounds)
     Dim lowerBound
     Dim upperBound
