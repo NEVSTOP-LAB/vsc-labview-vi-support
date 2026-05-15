@@ -23,6 +23,7 @@ export class LabVIEWVersionStatusController implements vscode.Disposable {
   private readonly statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   private activeResource: vscode.Uri | undefined;
   private refreshSerial = 0;
+  private discoveryError: string | null = null;
 
   public constructor() {
     this.statusBarItem.command = 'labview-vi-support.configureLabVIEWVersion';
@@ -49,31 +50,49 @@ export class LabVIEWVersionStatusController implements vscode.Disposable {
       return;
     }
 
-    const [resolvedVersion, installations] = await Promise.all([
-      this.resolveDisplayedVersion(scope),
-      discoverInstalledLabVIEWs(),
-    ]);
+    let projectVersion: ResolvedLabVIEWVersion | null = null;
+    let activeViVersion: ResolvedLabVIEWVersion | null = null;
+    let installations: InstalledLabVIEW[] = [];
+    try {
+      [projectVersion, activeViVersion, installations] = await Promise.all([
+        resolveDirectoryLabVIEWVersion(scope.rootDir),
+        this.resolveActiveViVersion(scope),
+        discoverInstalledLabVIEWs(),
+      ]);
+      this.discoveryError = null;
+    } catch (error) {
+      this.discoveryError = error instanceof Error ? error.message : String(error);
+    }
 
     if (serial !== this.refreshSerial) {
       return;
     }
 
-    const installed = resolvedVersion ? hasMatchingInstallation(resolvedVersion, installations) : false;
-    if (resolvedVersion) {
-      this.statusBarItem.text = `${installed ? '$(tools)' : '$(warning)'} LabVIEW: ${formatLabVIEWDisplayName(resolvedVersion, resolvedVersion.architecture)}`;
-      this.statusBarItem.tooltip = buildTooltip(scope.rootDir, resolvedVersion, installed);
-      this.statusBarItem.backgroundColor = installed
-        ? undefined
-        : new vscode.ThemeColor('statusBarItem.warningBackground');
-    } else {
-      this.statusBarItem.text = '$(question) LabVIEW: 未检测';
+    if (this.discoveryError) {
+      this.statusBarItem.text = '$(warning) LabVIEW: 安装探测失败';
       this.statusBarItem.tooltip = [
         `根目录: ${scope.rootDir}`,
-        '当前未检测到目录标记、lvproj 版本或 VI 文件头版本。',
-        '点击可写入根目录版本标记。',
+        this.discoveryError,
+        '点击可重新触发版本扫描。',
       ].join('\n');
+      this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+      this.statusBarItem.show();
+      return;
+    }
+
+    const presentation = buildStatusPresentation({
+      rootDir: scope.rootDir,
+      projectVersion,
+      activeViVersion,
+      installations,
+    });
+    if (presentation.warning) {
+      this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+    } else {
       this.statusBarItem.backgroundColor = undefined;
     }
+    this.statusBarItem.text = presentation.text;
+    this.statusBarItem.tooltip = presentation.tooltip;
     this.statusBarItem.show();
   }
 
@@ -88,12 +107,13 @@ export class LabVIEWVersionStatusController implements vscode.Disposable {
       resolveDirectoryLabVIEWVersion(scope.rootDir),
       discoverInstalledLabVIEWs({ refresh: true }),
     ]);
+    this.discoveryError = null;
 
     if (installations.length === 0) {
       const choice = await vscode.window.showWarningMessage(
         [
-          '本机未检测到已安装的 LabVIEW。',
-          '目录标记仍可用于静态识别，但图像导出、属性读取和属性写入不会再误用其他版本；当不存在匹配安装时，这些动态操作会严格失败。',
+          '当前没有检测到可用的 LabVIEW 安装信息。',
+          '如果你确认本机已安装 LabVIEW，请检查注册表中的安装路径是否完整；也可以先手动创建 DEV ENVIRONMENT 标记文件，静态识别仍会生效。',
         ].join(' '),
         '清除目录标记',
       );
@@ -118,7 +138,7 @@ export class LabVIEWVersionStatusController implements vscode.Disposable {
     });
 
     const selected = await vscode.window.showQuickPick(items, {
-      placeHolder: buildQuickPickPlaceholder(scope.rootDir, rootVersion),
+      placeHolder: buildQuickPickPlaceholder(scope.rootDir, rootVersion, installations.length),
       matchOnDescription: true,
       matchOnDetail: true,
       ignoreFocusOut: true,
@@ -160,15 +180,65 @@ export class LabVIEWVersionStatusController implements vscode.Disposable {
     return { rootDir: firstWorkspace.uri.fsPath };
   }
 
-  private async resolveDisplayedVersion(scope: { rootDir: string; resourcePath?: string }): Promise<ResolvedLabVIEWVersion | null> {
-    if (scope.resourcePath && /\.(vi|vit)$/i.test(scope.resourcePath)) {
-      return resolveLabVIEWVersionForPath(scope.resourcePath, readViSavedVersion);
+  private async resolveActiveViVersion(scope: { rootDir: string; resourcePath?: string }): Promise<ResolvedLabVIEWVersion | null> {
+    if (!scope.resourcePath || !/\.(vi|vit)$/i.test(scope.resourcePath)) {
+      return null;
     }
-    if (scope.resourcePath) {
-      return resolveDirectoryLabVIEWVersion(path.dirname(scope.resourcePath));
+    const fileVersion = await resolveLabVIEWVersionForPath(scope.resourcePath, readViSavedVersion);
+    if (fileVersion?.source === 'vi') {
+      return fileVersion;
     }
-    return resolveDirectoryLabVIEWVersion(scope.rootDir);
+    return null;
   }
+}
+
+interface StatusPresentation {
+  text: string;
+  tooltip: string;
+  warning: boolean;
+}
+
+export function buildStatusPresentation(options: {
+  rootDir: string;
+  projectVersion: ResolvedLabVIEWVersion | null;
+  activeViVersion: ResolvedLabVIEWVersion | null;
+  installations: readonly InstalledLabVIEW[];
+}): StatusPresentation {
+  const { rootDir, projectVersion, activeViVersion, installations } = options;
+  if (projectVersion) {
+    const installed = hasMatchingInstallation(projectVersion, installations);
+    return {
+      text: `${installed ? '$(tools)' : '$(warning)'} LabVIEW: ${formatLabVIEWDisplayName(projectVersion, projectVersion.architecture)}`,
+      tooltip: buildConfiguredTooltip(rootDir, projectVersion, installed),
+      warning: !installed,
+    };
+  }
+
+  if (installations.length > 1) {
+    return {
+      text: '$(question) LabVIEW: 多版本可用，项目未设置',
+      tooltip: buildUnsetTooltip(rootDir, installations, activeViVersion),
+      warning: false,
+    };
+  }
+
+  if (installations.length === 1) {
+    return {
+      text: '$(question) LabVIEW: 项目未设置',
+      tooltip: buildUnsetTooltip(rootDir, installations, activeViVersion),
+      warning: false,
+    };
+  }
+
+  return {
+    text: '$(warning) LabVIEW: 未检测到可用安装',
+    tooltip: [
+      `根目录: ${rootDir}`,
+      '当前项目未设置目录标记或 lvproj 版本，且没有检测到可用的本机 LabVIEW 安装。',
+      '点击可重新扫描安装版本，或先手动维护 DEV ENVIRONMENT 标记文件。',
+    ].join('\n'),
+    warning: true,
+  };
 }
 
 function hasMatchingInstallation(version: ResolvedLabVIEWVersion, installations: readonly InstalledLabVIEW[]): boolean {
@@ -179,7 +249,7 @@ function hasMatchingInstallation(version: ResolvedLabVIEWVersion, installations:
   ));
 }
 
-function buildTooltip(rootDir: string, version: ResolvedLabVIEWVersion, installed: boolean): string {
+function buildConfiguredTooltip(rootDir: string, version: ResolvedLabVIEWVersion, installed: boolean): string {
   const sourceLabel = version.source === 'directory-marker'
     ? '目录标记'
     : version.source === 'lvproj'
@@ -196,6 +266,29 @@ function buildTooltip(rootDir: string, version: ResolvedLabVIEWVersion, installe
   ].join('\n');
 }
 
+function buildUnsetTooltip(
+  rootDir: string,
+  installations: readonly InstalledLabVIEW[],
+  activeViVersion: ResolvedLabVIEWVersion | null,
+): string {
+  const lines = [
+    `根目录: ${rootDir}`,
+    '当前项目还没有目录标记，也没有可用于项目级判定的 lvproj 版本。',
+  ];
+  if (activeViVersion) {
+    lines.push(`当前活动 VI 保存版本: ${formatLabVIEWDisplayName(activeViVersion, activeViVersion.architecture)}`);
+  }
+  lines.push(`本机已检测到 ${installations.length} 个可用 LabVIEW 安装：`);
+  for (const installation of installations.slice(0, 6)) {
+    lines.push(`- ${formatLabVIEWDisplayName(installation, installation.architecture)} | ${installation.installDir}`);
+  }
+  if (installations.length > 6) {
+    lines.push(`- 其余 ${installations.length - 6} 个版本请点击后在列表中查看`);
+  }
+  lines.push('点击可为当前项目选择一个版本并写入根目录标记。');
+  return lines.join('\n');
+}
+
 function buildPickDetail(installation: InstalledLabVIEW, currentVersion: ResolvedLabVIEWVersion | null): string {
   if (
     currentVersion
@@ -208,9 +301,15 @@ function buildPickDetail(installation: InstalledLabVIEW, currentVersion: Resolve
   return `注册表版本键: ${installation.registryKey}`;
 }
 
-function buildQuickPickPlaceholder(rootDir: string, currentVersion: ResolvedLabVIEWVersion | null): string {
+function buildQuickPickPlaceholder(
+  rootDir: string,
+  currentVersion: ResolvedLabVIEWVersion | null,
+  installationCount: number,
+): string {
   if (!currentVersion) {
-    return `为根目录 ${rootDir} 选择一个已安装的 LabVIEW 版本`;
+    return installationCount > 1
+      ? `检测到多个 LabVIEW 版本，请为根目录 ${rootDir} 选择一个项目版本`
+      : `为根目录 ${rootDir} 选择当前可用的 LabVIEW 版本`;
   }
   return `根目录当前解析为 ${formatLabVIEWDisplayName(currentVersion, currentVersion.architecture)}，选择后会写入 DEV ENVIRONMENT 标记`;
 }

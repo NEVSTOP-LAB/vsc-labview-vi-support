@@ -1,6 +1,9 @@
 import * as assert from 'assert';
 
-import { buildWriteRequestLines } from '../../scripts/labviewRuntime';
+import {
+  buildInstalledLabVIEWDiscoveryScript,
+  buildWriteRequestLines,
+} from '../../scripts/labviewRuntime';
 import { decorateProps } from '../../scripts/propMetadata';
 
 function b64(text: string): string {
@@ -104,5 +107,15 @@ suite('labviewRuntime.buildWriteRequestLines', () => {
   test('rejects removed legacy properties', () => {
     assert.throws(() => buildWriteRequestLines({ PrintHeader: 'x' }));
     assert.throws(() => buildWriteRequestLines({ Priority: 2 }));
+  });
+
+  test('builds a multiline PowerShell discovery script for installed versions', () => {
+    const script = buildInstalledLabVIEWDiscoveryScript();
+
+    assert.ok(script.includes('$roots = @('));
+    assert.ok(script.includes('HKLM:\\SOFTWARE\\National Instruments\\LabVIEW'));
+    assert.ok(script.includes('ConvertTo-Json -Compress'));
+    assert.ok(!script.includes('@(;'));
+    assert.ok(script.includes('\n'));
   });
 });

@@ -21,6 +21,7 @@ import {
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_WORKER_TIMEOUT_SECONDS = 45;
+const DISCOVERY_TIMEOUT_MS = 30_000;
 const VI_VERSION_SCAN_BYTES = 512;
 const VI_VERSION_MARKER = Buffer.from([0x00, 0x00, 0x00, 0xa0]);
 const PE_MACHINE_I386 = 0x014c;
@@ -371,31 +372,16 @@ export async function discoverInstalledLabVIEWs(options: { refresh?: boolean } =
     return cachedInstallationsPromise;
   }
   cachedInstallationsPromise = (async () => {
-    const script = [
-      '$ErrorActionPreference = "Stop"',
-      '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
-      '$roots = @(',
-      '  "HKLM:\\SOFTWARE\\National Instruments\\LabVIEW",',
-      '  "HKLM:\\SOFTWARE\\WOW6432Node\\National Instruments\\LabVIEW"',
-      ')',
-      '$items = foreach ($root in $roots) {',
-      '  if (Test-Path $root) {',
-      '    Get-ChildItem $root | ForEach-Object {',
-      '      try {',
-      '        $installPath = (Get-ItemProperty -Path $_.PSPath -Name Path -ErrorAction Stop).Path',
-      '        if ($installPath) { [PSCustomObject]@{ version = $_.PSChildName; installDir = $installPath } }',
-      '      } catch {}',
-      '    }',
-      '  }',
-      '}',
-      '$items | ConvertTo-Json -Compress',
-    ].join('; ');
+    const script = buildInstalledLabVIEWDiscoveryScript();
 
     const result = await runCommand('powershell.exe', [
       '-NoProfile',
       '-ExecutionPolicy', 'Bypass',
       '-Command', script,
-    ], { timeoutMs: 30_000 });
+    ], { timeoutMs: DISCOVERY_TIMEOUT_MS });
+    if (result.exitCode !== 0) {
+      throw new Error(result.stderr.trim() || 'Failed to discover installed LabVIEW versions.');
+    }
 
     const rows = normalizePowerShellJson(result.stdout);
     const seen = new Set<string>();
@@ -410,7 +396,7 @@ export async function discoverInstalledLabVIEWs(options: { refresh?: boolean } =
       if (!fs.existsSync(exePath)) {
         continue;
       }
-      const architecture = await readPeArchitecture(exePath);
+      const architecture = await readPeArchitecture(exePath) ?? inferArchitectureFromInstallDir(installDir);
       if (!architecture) {
         continue;
       }
@@ -437,6 +423,28 @@ export async function discoverInstalledLabVIEWs(options: { refresh?: boolean } =
   })();
 
   return cachedInstallationsPromise;
+}
+
+export function buildInstalledLabVIEWDiscoveryScript(): string {
+  return [
+    '$ErrorActionPreference = "Stop"',
+    '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
+    '$roots = @(',
+    '  "HKLM:\\SOFTWARE\\National Instruments\\LabVIEW",',
+    '  "HKLM:\\SOFTWARE\\WOW6432Node\\National Instruments\\LabVIEW"',
+    ')',
+    '$items = foreach ($root in $roots) {',
+    '  if (Test-Path $root) {',
+    '    Get-ChildItem $root | ForEach-Object {',
+    '      try {',
+    '        $installPath = (Get-ItemProperty -Path $_.PSPath -Name Path -ErrorAction Stop).Path',
+    '        if ($installPath) { [PSCustomObject]@{ version = $_.PSChildName; installDir = $installPath } }',
+    '      } catch {}',
+    '    }',
+    '  }',
+    '}',
+    '$items | ConvertTo-Json -Compress',
+  ].join('\n');
 }
 
 function normalizePowerShellJson(jsonText: string): Array<{ version: string; installDir: string }> {
@@ -490,6 +498,17 @@ async function readPeArchitecture(exePath: string): Promise<LabVIEWArchitecture 
   } finally {
     await file.close();
   }
+}
+
+function inferArchitectureFromInstallDir(installDir: string): LabVIEWArchitecture | null {
+  const normalized = installDir.replace(/\//g, '\\').toLowerCase();
+  if (normalized.includes('\\program files (x86)\\')) {
+    return 'x86';
+  }
+  if (normalized.includes('\\program files\\')) {
+    return 'x64';
+  }
+  return null;
 }
 
 function selectInstalledLabVIEW(

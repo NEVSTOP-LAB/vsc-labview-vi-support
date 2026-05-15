@@ -38,9 +38,9 @@ interface ViEditorProviderHooks {
  *
  * 主要职责：
  *   1. 计算源 VI 的 MD5，查询或新建对应的缓存条目；
- *   2. 按需调用内置 Python 原型脚本，懒加载 FP/BD 图像和属性 JSON；
+ *   2. 按需调用内置 VBS worker，懒加载 FP/BD 图像和属性 JSON；
  *   3. 承载 WebView UI，并处理其 postMessage 通信协议；
- *   4. 在保存时调用 `write_vi_props.py`，再重新计算 MD5 并刷新视图。
+ *   4. 在保存时调用写属性 worker，再重新计算 MD5 并刷新视图。
  */
 export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViDocument> {
   public static readonly viewType = 'labview-vi-support.viEditor';

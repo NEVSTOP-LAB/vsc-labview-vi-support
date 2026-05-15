@@ -104,7 +104,7 @@ suite('propsParser.parsePropsResponseText', () => {
 });
 
 suite('propsParser.parsePropsJson', () => {
-  test('accepts the JSON envelope produced by read_vi_props.py', () => {
+  test('accepts the runtime JSON envelope for read results', () => {
     const env = parsePropsJson(JSON.stringify({
       vi_path: 'C:\\path\\main.vi',
       lv_version: '17.0',
