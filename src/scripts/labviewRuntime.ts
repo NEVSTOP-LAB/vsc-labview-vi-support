@@ -400,6 +400,7 @@ export async function discoverInstalledLabVIEWs(options: { refresh?: boolean } =
         continue;
       }
       const architecture = await readPeArchitecture(exePath) ?? inferArchitectureFromInstallDir(installDir);
+      // Keep custom-path installs discoverable even when PE machine is unknown and directory heuristics do not apply.
       const normalizedArchitecture = architecture ?? inferArchitectureFromHost();
       if (!normalizedArchitecture) {
         continue;

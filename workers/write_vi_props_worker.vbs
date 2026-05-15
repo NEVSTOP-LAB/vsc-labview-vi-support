@@ -1,5 +1,8 @@
 Option Explicit
 
+Const REQUEST_SUFFIX_TYPE = "_type"
+Const REQUEST_SUFFIX_VAL  = "_val"
+
 ' ===========================================================================
 ' write_vi_props_worker.vbs
 ' ===========================================================================
@@ -230,11 +233,11 @@ Function ParseRequestFile(ByVal pathText)
                     rest = Mid(key, 5)
                     propName = ""
                     suffix = ""
-                    If Len(rest) > 5 And LCase(Right(rest, 5)) = "_type" Then
-                        propName = Left(rest, Len(rest) - 5)
+                    If Len(rest) > Len(REQUEST_SUFFIX_TYPE) And LCase(Right(rest, Len(REQUEST_SUFFIX_TYPE))) = REQUEST_SUFFIX_TYPE Then
+                        propName = Left(rest, Len(rest) - Len(REQUEST_SUFFIX_TYPE))
                         suffix = "type"
-                    ElseIf Len(rest) > 4 And LCase(Right(rest, 4)) = "_val" Then
-                        propName = Left(rest, Len(rest) - 4)
+                    ElseIf Len(rest) > Len(REQUEST_SUFFIX_VAL) And LCase(Right(rest, Len(REQUEST_SUFFIX_VAL))) = REQUEST_SUFFIX_VAL Then
+                        propName = Left(rest, Len(rest) - Len(REQUEST_SUFFIX_VAL))
                         suffix = "val"
                     End If
                     If Len(propName) > 0 Then
