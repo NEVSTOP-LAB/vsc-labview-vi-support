@@ -25,7 +25,6 @@ import {
   requestLabVIEWSession,
 } from '../labviewSession';
 import {
-  formatLabVIEWDisplayName,
   formatLabVIEWExpectedVersion,
   resolveLabVIEWVersionForPath,
   type LabVIEWVersion,
@@ -75,9 +74,7 @@ export class UnsupportedPreviewExportError extends Error {
 export function getUnsafePreviewExportReason(
   version: Pick<LabVIEWVersion, 'major' | 'minor'>,
 ): string | null {
-  if (version.major === 20 && version.minor === 0) {
-    return `${formatLabVIEWDisplayName(version)} 的预览导出已为稳定性自动禁用：该版本在导出 VI 预览图时可能直接导致 LabVIEW 崩溃。请使用仅属性表视图。`;
-  }
+  void version;
   return null;
 }
 
