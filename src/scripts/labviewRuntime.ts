@@ -54,6 +54,7 @@ export interface InstalledLabVIEW extends LabVIEWVersion {
 interface RuntimeTargetSelection {
   requestedVersion: ResolvedLabVIEWVersion | null;
   installation: InstalledLabVIEW | undefined;
+  installations: InstalledLabVIEW[];
 }
 
 interface ImageWorkerResponse {
@@ -352,6 +353,7 @@ async function resolveTargetInstallation(viPath: string): Promise<RuntimeTargetS
     return {
       requestedVersion: null,
       installation: undefined,
+      installations: [],
     };
   }
 
@@ -364,6 +366,7 @@ async function resolveTargetInstallation(viPath: string): Promise<RuntimeTargetS
       requestedVersion.minor,
       requestedVersion.architecture,
     ),
+    installations,
   };
 }
 
@@ -518,7 +521,7 @@ function inferArchitectureFromInstallDir(installDir: string): LabVIEWArchitectur
 
 function inferArchitectureFromHost(): LabVIEWArchitecture | null {
   // Last-resort fallback: this reflects extension host bitness, not the LabVIEW EXE bitness.
-  // We only use it to avoid hiding install entries when PE parsing and install-dir heuristics both fail.
+  // It prioritizes discoverability and may still fail later if LabVIEW bitness differs during COM activation.
   if (process.arch === 'ia32') {
     return 'x86';
   }
@@ -566,8 +569,14 @@ function ensureTargetInstallation(target: RuntimeTargetSelection, viPath: string
   }
   const expectedVersion = formatLabVIEWExpectedVersion(target.requestedVersion);
   const expectedArchitecture = target.requestedVersion.architecture ? ` (${target.requestedVersion.architecture})` : '';
+  const available = target.installations.length > 0
+    ? target.installations
+      .map((entry) => `${formatLabVIEWExpectedVersion(entry)} (${entry.architecture})`)
+      .join(', ')
+    : 'none';
   throw new Error(
     `No installed LabVIEW matches requested version ${expectedVersion}${expectedArchitecture} for ${viPath}. `
+    + `Detected installations: ${available}. `
     + 'Please install a matching version or update the project LabVIEW marker.',
   );
 }

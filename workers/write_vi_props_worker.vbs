@@ -1,6 +1,6 @@
 Option Explicit
 
-' Keep suffix constants lowercase because parser compares against LCase(...) for case-insensitive keys.
+' Suffix values are compared against LCase(...) for case-insensitive key parsing.
 Const REQUEST_SUFFIX_TYPE = "_type"
 Const REQUEST_SUFFIX_VAL  = "_val"
 
