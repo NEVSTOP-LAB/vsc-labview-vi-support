@@ -11,9 +11,17 @@ import {
 } from './propsParser';
 import { decorateProps, WRITABLE_PROP_TYPES } from './propMetadata';
 import type { ScriptPaths } from './scriptPaths';
+import {
+  formatLabVIEWExpectedVersion,
+  resolveLabVIEWVersionForPath,
+  type LabVIEWArchitecture,
+  type LabVIEWVersion,
+  type ResolvedLabVIEWVersion,
+} from './labviewVersionResolver';
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_WORKER_TIMEOUT_SECONDS = 45;
+const DISCOVERY_TIMEOUT_MS = 30_000;
 const VI_VERSION_SCAN_BYTES = 512;
 const VI_VERSION_MARKER = Buffer.from([0x00, 0x00, 0x00, 0xa0]);
 const PE_MACHINE_I386 = 0x014c;
@@ -36,16 +44,17 @@ interface RunCommandResult {
   signal: NodeJS.Signals | null;
 }
 
-interface LabVIEWVersion {
-  major: number;
-  minor: number;
-}
-
-interface InstalledLabVIEW extends LabVIEWVersion {
+export interface InstalledLabVIEW extends LabVIEWVersion {
   registryKey: string;
   installDir: string;
   exePath: string;
-  architecture: string;
+  architecture: LabVIEWArchitecture;
+}
+
+interface RuntimeTargetSelection {
+  requestedVersion: ResolvedLabVIEWVersion | null;
+  installation: InstalledLabVIEW | undefined;
+  installations: InstalledLabVIEW[];
 }
 
 interface ImageWorkerResponse {
@@ -139,18 +148,19 @@ export async function exportViPanelImages(
   if (!normalizedOutputs.fp && !normalizedOutputs.bd) {
     throw new Error('At least one image output path must be provided.');
   }
-  const installation = await resolveTargetInstallation(absViPath);
+  const target = await resolveTargetInstallation(absViPath);
+  ensureTargetInstallation(target, absViPath);
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const responseText = await runWorkerWithResponse({
-        scriptHost: selectScriptHost(installation?.architecture),
+        scriptHost: selectScriptHost(target.installation?.architecture ?? target.requestedVersion?.architecture),
         scriptPath: scripts.savePanelImageWorker,
         args: [
           `/viPath:${absViPath}`,
           ...(normalizedOutputs.fp ? [`/fpOutputPath:${normalizedOutputs.fp}`] : []),
           ...(normalizedOutputs.bd ? [`/bdOutputPath:${normalizedOutputs.bd}`] : []),
-          ...buildTargetArgs(installation),
+          ...buildTargetArgs(target),
         ],
         timeoutMs: options.timeoutMs,
       });
@@ -187,13 +197,14 @@ export async function readViProps(
 ): Promise<PropsJsonEnvelope> {
   ensureWindows();
   const absViPath = path.resolve(viPath);
-  const installation = await resolveTargetInstallation(absViPath);
+  const target = await resolveTargetInstallation(absViPath);
+  ensureTargetInstallation(target, absViPath);
   const responseText = await runWorkerWithResponse({
-    scriptHost: selectScriptHost(installation?.architecture),
+    scriptHost: selectScriptHost(target.installation?.architecture ?? target.requestedVersion?.architecture),
     scriptPath: scripts.readPropsWorker,
     args: [
       `/viPath:${absViPath}`,
-      ...buildTargetArgs(installation),
+      ...buildTargetArgs(target),
     ],
     timeoutMs: options.timeoutMs,
   });
@@ -242,7 +253,8 @@ export async function writeViProps(
 ): Promise<PropsJsonEnvelope> {
   ensureWindows();
   const absViPath = path.resolve(viPath);
-  const installation = await resolveTargetInstallation(absViPath);
+  const target = await resolveTargetInstallation(absViPath);
+  ensureTargetInstallation(target, absViPath);
   const requestPath = path.join(
     os.tmpdir(),
     `labview-vi-write-${Math.random().toString(16).slice(2)}.in`,
@@ -252,13 +264,13 @@ export async function writeViProps(
     await fs.promises.writeFile(requestPath, requestBody, 'ascii');
 
     const responseText = await runWorkerWithResponse({
-      scriptHost: selectScriptHost(installation?.architecture),
+      scriptHost: selectScriptHost(target.installation?.architecture ?? target.requestedVersion?.architecture),
       scriptPath: scripts.writePropsWorker,
       args: [
         `/viPath:${absViPath}`,
         `/requestPath:${requestPath}`,
         '/save:1',
-        ...buildTargetArgs(installation),
+        ...buildTargetArgs(target),
       ],
       timeoutMs: options.timeoutMs,
     });
@@ -335,45 +347,47 @@ function normalizeWritableValue(
 
 let cachedInstallationsPromise: Promise<InstalledLabVIEW[]> | null = null;
 
-async function resolveTargetInstallation(viPath: string): Promise<InstalledLabVIEW | undefined> {
-  const savedVersion = await readViSavedVersion(viPath);
-  if (!savedVersion) {
-    return undefined;
+async function resolveTargetInstallation(viPath: string): Promise<RuntimeTargetSelection> {
+  const requestedVersion = await resolveLabVIEWVersionForPath(viPath, readViSavedVersion);
+  if (!requestedVersion) {
+    return {
+      requestedVersion: null,
+      installation: undefined,
+      installations: [],
+    };
   }
+
   const installations = await discoverInstalledLabVIEWs();
-  return selectInstalledLabVIEW(installations, savedVersion.major, savedVersion.minor);
+  return {
+    requestedVersion,
+    installation: selectInstalledLabVIEW(
+      installations,
+      requestedVersion.major,
+      requestedVersion.minor,
+      requestedVersion.architecture,
+    ),
+    installations,
+  };
 }
 
-async function discoverInstalledLabVIEWs(): Promise<InstalledLabVIEW[]> {
+export async function discoverInstalledLabVIEWs(options: { refresh?: boolean } = {}): Promise<InstalledLabVIEW[]> {
+  if (options.refresh) {
+    cachedInstallationsPromise = null;
+  }
   if (cachedInstallationsPromise) {
     return cachedInstallationsPromise;
   }
   cachedInstallationsPromise = (async () => {
-    const script = [
-      '$ErrorActionPreference = "Stop"',
-      '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
-      '$roots = @(',
-      '  "HKLM:\\SOFTWARE\\National Instruments\\LabVIEW",',
-      '  "HKLM:\\SOFTWARE\\WOW6432Node\\National Instruments\\LabVIEW"',
-      ')',
-      '$items = foreach ($root in $roots) {',
-      '  if (Test-Path $root) {',
-      '    Get-ChildItem $root | ForEach-Object {',
-      '      try {',
-      '        $installPath = (Get-ItemProperty -Path $_.PSPath -Name Path -ErrorAction Stop).Path',
-      '        if ($installPath) { [PSCustomObject]@{ version = $_.PSChildName; installDir = $installPath } }',
-      '      } catch {}',
-      '    }',
-      '  }',
-      '}',
-      '$items | ConvertTo-Json -Compress',
-    ].join('; ');
+    const script = buildInstalledLabVIEWDiscoveryScript();
 
     const result = await runCommand('powershell.exe', [
       '-NoProfile',
       '-ExecutionPolicy', 'Bypass',
       '-Command', script,
-    ], { timeoutMs: 30_000 });
+    ], { timeoutMs: DISCOVERY_TIMEOUT_MS });
+    if (result.exitCode !== 0) {
+      throw new Error(result.stderr.trim() || 'Failed to discover installed LabVIEW versions.');
+    }
 
     const rows = normalizePowerShellJson(result.stdout);
     const seen = new Set<string>();
@@ -388,8 +402,13 @@ async function discoverInstalledLabVIEWs(): Promise<InstalledLabVIEW[]> {
       if (!fs.existsSync(exePath)) {
         continue;
       }
-      const architecture = await readPeArchitecture(exePath);
-      const key = `${parsedVersion.major}.${parsedVersion.minor}|${architecture}|${exePath.toLowerCase()}`;
+      const architecture = await readPeArchitecture(exePath) ?? inferArchitectureFromInstallDir(installDir);
+      // Keep custom-path installs discoverable even when PE machine is unknown and directory heuristics do not apply.
+      const normalizedArchitecture = architecture ?? inferArchitectureFromHost();
+      if (!normalizedArchitecture) {
+        continue;
+      }
+      const key = `${parsedVersion.major}.${parsedVersion.minor}|${normalizedArchitecture}|${exePath.toLowerCase()}`;
       if (seen.has(key)) {
         continue;
       }
@@ -399,7 +418,7 @@ async function discoverInstalledLabVIEWs(): Promise<InstalledLabVIEW[]> {
         registryKey: row.version,
         installDir,
         exePath,
-        architecture,
+        architecture: normalizedArchitecture,
       });
     }
     installations.sort((left, right) => (
@@ -412,6 +431,28 @@ async function discoverInstalledLabVIEWs(): Promise<InstalledLabVIEW[]> {
   })();
 
   return cachedInstallationsPromise;
+}
+
+export function buildInstalledLabVIEWDiscoveryScript(): string {
+  return [
+    '$ErrorActionPreference = "Stop"',
+    '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
+    '$roots = @(',
+    '  "HKLM:\\SOFTWARE\\National Instruments\\LabVIEW",',
+    '  "HKLM:\\SOFTWARE\\WOW6432Node\\National Instruments\\LabVIEW"',
+    ')',
+    '$items = foreach ($root in $roots) {',
+    '  if (Test-Path $root) {',
+    '    Get-ChildItem $root | ForEach-Object {',
+    '      try {',
+    '        $installPath = (Get-ItemProperty -Path $_.PSPath -Name Path -ErrorAction Stop).Path',
+    '        if ($installPath) { [PSCustomObject]@{ version = $_.PSChildName; installDir = $installPath } }',
+    '      } catch {}',
+    '    }',
+    '  }',
+    '}',
+    '$items | ConvertTo-Json -Compress',
+  ].join('\n');
 }
 
 function normalizePowerShellJson(jsonText: string): Array<{ version: string; installDir: string }> {
@@ -443,7 +484,7 @@ function parseVersionKey(versionKey: string): LabVIEWVersion | null {
   return { major: Number(match[1]), minor: Number(match[2]) };
 }
 
-async function readPeArchitecture(exePath: string): Promise<string> {
+async function readPeArchitecture(exePath: string): Promise<LabVIEWArchitecture | null> {
   const file = await fs.promises.open(exePath, 'r');
   try {
     const offsetBuffer = Buffer.alloc(4);
@@ -461,46 +502,84 @@ async function readPeArchitecture(exePath: string): Promise<string> {
     if (machine === PE_MACHINE_AMD64) {
       return 'x64';
     }
-    return `unknown(0x${machine.toString(16).padStart(4, '0').toUpperCase()})`;
+    return null;
   } finally {
     await file.close();
   }
+}
+
+function inferArchitectureFromInstallDir(installDir: string): LabVIEWArchitecture | null {
+  const normalized = installDir.replace(/\//g, '\\').toLowerCase();
+  if (normalized.includes('\\program files (x86)\\')) {
+    return 'x86';
+  }
+  if (normalized.includes('\\program files\\')) {
+    return 'x64';
+  }
+  return null;
+}
+
+function inferArchitectureFromHost(): LabVIEWArchitecture | null {
+  // Last-resort fallback: this reflects extension host bitness, not the LabVIEW EXE bitness.
+  // It is only used when PE machine detection and install-directory heuristics both fail.
+  // It prioritizes discoverability and may still fail later if LabVIEW bitness differs during COM activation.
+  if (process.arch === 'ia32') {
+    return 'x86';
+  }
+  if (process.arch === 'x64') {
+    return 'x64';
+  }
+  return null;
 }
 
 function selectInstalledLabVIEW(
   installations: InstalledLabVIEW[],
   targetMajor: number,
   targetMinor: number,
+  targetArchitecture?: LabVIEWArchitecture,
 ): InstalledLabVIEW | undefined {
-  const defaultBitness = process.arch === 'x64' ? 'x64' : 'x86';
-  const exact = installations
-    .filter((entry) => entry.major === targetMajor && entry.minor === targetMinor)
-    .sort((left, right) => scoreByBitness(left.architecture, defaultBitness) - scoreByBitness(right.architecture, defaultBitness));
-  if (exact.length > 0) {
-    return exact[0];
-  }
-
-  const sameMajor = installations
-    .filter((entry) => entry.major === targetMajor)
-    .sort((left, right) => (
-      Math.abs(left.minor - targetMinor) - Math.abs(right.minor - targetMinor)
-      || scoreByBitness(left.architecture, defaultBitness) - scoreByBitness(right.architecture, defaultBitness)
-    ));
-  return sameMajor[0];
+  const preferredBitness = targetArchitecture ?? (process.arch === 'x64' ? 'x64' : 'x86');
+  return installations
+    .filter((entry) => (
+      entry.major === targetMajor
+      && entry.minor === targetMinor
+      && (!targetArchitecture || entry.architecture === targetArchitecture)
+    ))
+    .sort((left, right) => scoreByBitness(left.architecture, preferredBitness) - scoreByBitness(right.architecture, preferredBitness))[0];
 }
 
 function scoreByBitness(actual: string, preferred: string): number {
   return actual === preferred ? 0 : 1;
 }
 
-function buildTargetArgs(installation: InstalledLabVIEW | undefined): string[] {
-  if (!installation) {
-    return [];
+function buildTargetArgs(target: RuntimeTargetSelection): string[] {
+  const args: string[] = [];
+  if (target.requestedVersion) {
+    args.push(`/expectedVersion:${formatLabVIEWExpectedVersion(target.requestedVersion)}`);
   }
-  return [
-    `/targetExe:${installation.exePath}`,
-    `/expectedDirectory:${installation.installDir}`,
-  ];
+  if (target.installation) {
+    args.push(`/targetExe:${target.installation.exePath}`);
+    args.push(`/expectedDirectory:${target.installation.installDir}`);
+  }
+  return args;
+}
+
+function ensureTargetInstallation(target: RuntimeTargetSelection, viPath: string): void {
+  if (!target.requestedVersion || target.installation) {
+    return;
+  }
+  const expectedVersion = formatLabVIEWExpectedVersion(target.requestedVersion);
+  const expectedArchitecture = target.requestedVersion.architecture ? ` (${target.requestedVersion.architecture})` : '';
+  const available = target.installations.length > 0
+    ? target.installations
+      .map((entry) => `${formatLabVIEWExpectedVersion(entry)} (${entry.architecture})`)
+      .join(', ')
+    : 'none';
+  throw new Error(
+    `No installed LabVIEW matches requested version ${expectedVersion}${expectedArchitecture} for ${viPath}. `
+    + `Detected installations: ${available}. `
+    + 'Please install a matching version or update the project LabVIEW marker.',
+  );
 }
 
 function selectScriptHost(architecture: string | undefined): string {

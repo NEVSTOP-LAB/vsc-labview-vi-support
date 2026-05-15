@@ -3,7 +3,7 @@ import * as path from 'path';
 /**
  * 定位扩展打包后随附的 LabVIEW worker 脚本。
  *
- * `prototype/` 目录会被原样打包进扩展，包含：
+ * `workers/` 目录会随扩展一起打包，包含：
  *   - save_vi_panel_image_worker.vbs
  *   - read_vi_props_worker.vbs
  *   - write_vi_props_worker.vbs
@@ -18,7 +18,7 @@ export interface ScriptPaths {
 }
 
 export function resolveScriptPaths(extensionRoot: string): ScriptPaths {
-  const root = path.join(extensionRoot, 'prototype', 'scripts');
+  const root = path.join(extensionRoot, 'workers');
   return {
     root,
     savePanelImageWorker: path.join(root, 'save_vi_panel_image_worker.vbs'),

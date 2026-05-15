@@ -10,8 +10,7 @@ esbuild.js
 eslint.config.mjs
 tsconfig.json
 .vscode-test.mjs
-prototype/README.html
-prototype/vi/**
+prototype/**
 **/__pycache__/**
 **/*.pyc
 out/**

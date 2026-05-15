@@ -9,7 +9,6 @@
   h1 { border-bottom: 2px solid #0078d4; padding-bottom: 8px; }
   h2 { border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 40px; }
   h3 { margin-top: 28px; }
-  code { background: #f3f3f3; padding: 2px 6px; border-radius: 3px; font-size: 0.93em; }
   pre { background: #f6f8fa; border: 1px solid #ddd; border-radius: 6px; padding: 16px; overflow-x: auto; }
   pre code { background: none; padding: 0; }
   table { border-collapse: collapse; width: 100%; }
@@ -28,14 +27,57 @@
 <h2>文件结构</h2>
 <pre><code>prototype/
 └── scripts/
-    ├── read_vi_version.py              # 读取 VI 保存版本（纯文件头，无需 LabVIEW）
-    ├── read_vi_description.py          # 读取 VI Description（通过 COM/ActiveX）
-    ├── read_vi_description_worker.vbs  # VBScript COM Worker（供上脚本调用）
-    ├── read_vi_props.py                # 读取 VI 全部可访问属性（通过 COM/ActiveX）
-  ├── read_vi_props_worker.vbs        # VBScript COM Worker（供上脚本调用）
-  ├── read_vi_icon.py                 # 直接解析 RSRC 导出 VI 图标（纯文件）
-  └── save_vi_panel_image.py          # 通过 Python + VI Server 导出前/背面板图片
+    ├── discover_installed_labviews.py   # 独立探测本机 LabVIEW 安装（注册表 + PE 头）
+    ├── read_vi_version.py                # 读取 VI 保存版本（纯文件头，无需 LabVIEW）
+    ├── read_vi_description.py            # 读取 VI Description（通过 COM/ActiveX）
+    ├── read_vi_description_worker.vbs    # VBScript COM Worker（供上脚本调用）
+    ├── read_vi_props.py                  # 读取 VI 全部可访问属性（通过 COM/ActiveX）
+    ├── read_vi_props_worker.vbs          # VBScript COM Worker（供上脚本调用）
+    ├── read_vi_icon.py                   # 直接解析 RSRC 导出 VI 图标（纯文件）
+    └── save_vi_panel_image.py            # 通过 Python + VI Server 导出前/背面板图片
 </code></pre>
+
+<h2>discover_installed_labviews.py — 探测本机 LabVIEW 安装</h2>
+
+<p><strong>这是一个独立的诊断 prototype。</strong>它不依赖 VS Code 扩展宿主，专门用于回答一件事：
+这台 Windows 机器上，注册表里到底有哪些 LabVIEW 安装能被可靠识别出来。</p>
+
+<h3>工作内容</h3>
+<ol>
+  <li>扫描 64 位与 32 位注册表视图下的 <code>HKLM\SOFTWARE\National Instruments\LabVIEW</code>。</li>
+  <li>读取每个版本子键的 <code>Path</code>。</li>
+  <li>检查该目录下是否存在 <code>LabVIEW.exe</code>。</li>
+  <li>读取 <code>LabVIEW.exe</code> 的 PE 头，判断 x86 / x64；必要时回退到按安装目录推断位数。</li>
+  <li>输出有效安装列表，并可选输出所有被跳过条目与原因。</li>
+</ol>
+
+<h3>用法</h3>
+<pre><code># 只看有效安装
+python scripts/discover_installed_labviews.py
+
+# 附带所有被跳过条目的诊断信息
+python scripts/discover_installed_labviews.py --diagnose
+
+# JSON 输出（适合和扩展运行时结果对比）
+python scripts/discover_installed_labviews.py --json
+
+# JSON + 完整诊断
+python scripts/discover_installed_labviews.py --json --diagnose
+</code></pre>
+
+<h3>典型输出</h3>
+<pre><code>发现 7 个可用 LabVIEW 安装：
+- LabVIEW 2017 32bit | key=17.0 | view=32 | dir=C:\Program Files (x86)\National Instruments\LabVIEW 2017
+- LabVIEW 2020 64bit | key=20.0 | view=64 | dir=C:\Program Files\National Instruments\LabVIEW 2020
+- LabVIEW 2025 SP3 32bit | key=25.3 | view=32 | dir=C:\Program Files (x86)\National Instruments\LabVIEW 2025
+</code></pre>
+
+<h3>退出码</h3>
+<table>
+  <tr><th>退出码</th><th>含义</th></tr>
+  <tr><td>0</td><td>脚本执行成功，且至少发现一个可用安装</td></tr>
+  <tr><td>2</td><td>没有发现可用安装，或探测执行失败；详细错误会打印到 stderr</td></tr>
+</table>
 
 <h2>read_vi_version.py — 读取 VI 版本</h2>
 

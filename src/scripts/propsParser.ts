@@ -18,10 +18,10 @@
  *   prop_<Name>_val=<base64-utf8>     (ok=1)
  *   prop_<Name>_errmsg=<base64-utf8>  (ok=0)
  *
- * 实际运行时，read/write 的 Python 入口会把上述结果再以 JSON 输出到 stdout，
+ * 在扩展运行时，这些结果会被整理成 JSON 信封后再交给 WebView，
  * 因此本模块同时提供两种解析入口：
  *   1. `parsePropsResponseText` —— 直接解析原始响应文件；
- *   2. `parsePropsJson`         —— 校验 Python 包装层吐出的 JSON 信封，
+ *   2. `parsePropsJson`         —— 校验运行时整理出的 JSON 信封，
  *                                  随后再喂给 WebView。
  */
 
@@ -124,12 +124,12 @@ export function parsePropsResponseText(text: string): PropsResponse {
 }
 
 /**
- * Validate and normalize the JSON object emitted by the Python wrappers'
- * stdout. `read_vi_props.py --format json` returns:
+ * Validate and normalize the JSON envelope used by the runtime and cache layer.
+ * A read envelope returns:
  *
  *   { "vi_path": "...", "lv_version": "...", "props": { Name: PropEntry, ... } }
  *
- * `write_vi_props.py` returns:
+ * A write envelope returns:
  *
  *   { "vi_path": "...", "lv_version": "...", "saved": bool,
  *     "save_error": str, "props": { ... } }

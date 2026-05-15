@@ -27,10 +27,10 @@
   let previewMode = 'both';      // 'fp' | 'bd' | 'both'
   let currentPropsEnvelope = null;
   let currentLoadingState = { fp: false, bd: false, props: false };
-  /** @type {Record<'fp'|'bd', { scale: number, x: number, y: number, naturalW: number, naturalH: number }>} */
+  /** @type {Record<'fp'|'bd', { scale: number, fitScale: number, x: number, y: number, naturalW: number, naturalH: number }>} */
   const viewState = {
-    fp: { scale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0 },
-    bd: { scale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0 },
+    fp: { scale: 1, fitScale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0 },
+    bd: { scale: 1, fitScale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0 },
   };
   const ZOOM_MIN = 0.1;
   const ZOOM_MAX = 5.0;
@@ -279,6 +279,122 @@
   // -------------------------------------------------------------------------
   // Image: load / fit / pan / zoom
   // -------------------------------------------------------------------------
+  function resetViewportBackground(panel) {
+    const viewport = viewports[panel];
+    viewport.style.removeProperty('--preview-bg-color');
+    viewport.style.removeProperty('--preview-bg-pattern');
+  }
+
+  function applyViewportBackground(panel, color) {
+    if (!color) {
+      resetViewportBackground(panel);
+      return;
+    }
+    const viewport = viewports[panel];
+    viewport.style.setProperty('--preview-bg-color', color);
+    viewport.style.setProperty('--preview-bg-pattern', 'none');
+  }
+
+  function resetImageView(panel) {
+    const vs = viewState[panel];
+    vs.scale = 1;
+    vs.fitScale = 1;
+    vs.x = 0;
+    vs.y = 0;
+    vs.naturalW = 0;
+    vs.naturalH = 0;
+    applyTransform(panel);
+    refreshZoomLabel(panel);
+    resetViewportBackground(panel);
+  }
+
+  function detectImageBackgroundColor(img) {
+    if (!img || !img.naturalWidth || !img.naturalHeight) {
+      return null;
+    }
+
+    const maxSampleSize = 128;
+    const longestSide = Math.max(img.naturalWidth, img.naturalHeight);
+    const sampleScale = longestSide > maxSampleSize ? (maxSampleSize / longestSide) : 1;
+    const sampleWidth = Math.max(1, Math.round(img.naturalWidth * sampleScale));
+    const sampleHeight = Math.max(1, Math.round(img.naturalHeight * sampleScale));
+    const borderWidth = Math.max(1, Math.round(Math.min(sampleWidth, sampleHeight) * 0.08));
+    const bucketStep = 16;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = sampleWidth;
+    canvas.height = sampleHeight;
+
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) {
+      return null;
+    }
+
+    try {
+      context.drawImage(img, 0, 0, sampleWidth, sampleHeight);
+      const { data } = context.getImageData(0, 0, sampleWidth, sampleHeight);
+      const buckets = new Map();
+
+      const collectPixel = (offset) => {
+        const alpha = data[offset + 3];
+        if (alpha < 200) {
+          return;
+        }
+
+        const red = data[offset];
+        const green = data[offset + 1];
+        const blue = data[offset + 2];
+        const key = [red, green, blue]
+          .map((value) => Math.round(value / bucketStep) * bucketStep)
+          .join(',');
+        const bucket = buckets.get(key) || { weight: 0, r: 0, g: 0, b: 0 };
+        const weight = alpha / 255;
+        bucket.weight += weight;
+        bucket.r += red * weight;
+        bucket.g += green * weight;
+        bucket.b += blue * weight;
+        buckets.set(key, bucket);
+      };
+
+      for (let y = 0; y < sampleHeight; y += 1) {
+        for (let x = 0; x < sampleWidth; x += 1) {
+          const isBorderPixel = x < borderWidth
+            || y < borderWidth
+            || x >= sampleWidth - borderWidth
+            || y >= sampleHeight - borderWidth;
+          if (!isBorderPixel) {
+            continue;
+          }
+          collectPixel((y * sampleWidth + x) * 4);
+        }
+      }
+
+      let bestBucket = null;
+      for (const bucket of buckets.values()) {
+        if (!bestBucket || bucket.weight > bestBucket.weight) {
+          bestBucket = bucket;
+        }
+      }
+
+      if (!bestBucket || bestBucket.weight <= 0) {
+        return null;
+      }
+
+      const red = Math.round(bestBucket.r / bestBucket.weight);
+      const green = Math.round(bestBucket.g / bestBucket.weight);
+      const blue = Math.round(bestBucket.b / bestBucket.weight);
+      return 'rgb(' + red + ', ' + green + ', ' + blue + ')';
+    } catch {
+      return null;
+    }
+  }
+
+  function syncLoadedImagePresentation(panel) {
+    const img = images[panel];
+    applyViewportBackground(panel, detectImageBackgroundColor(img));
+    requestAnimationFrame(() => fitToViewport(panel));
+  }
+
   function setImage(panel, uri, loading) {
     const img = images[panel];
     const placeholder = placeholders[panel];
@@ -288,9 +404,10 @@
         viewState[panel].naturalH = img.naturalHeight;
         img.classList.add('loaded');
         placeholder.classList.add('hidden');
-        fitToViewport(panel);
+        syncLoadedImagePresentation(panel);
       };
       img.onerror = () => {
+        resetImageView(panel);
         img.classList.remove('loaded');
         placeholder.classList.remove('hidden');
         placeholder.textContent = '图像加载失败。';
@@ -307,6 +424,7 @@
         img.src = uri + cacheBust + 't=' + Date.now();
       }
     } else {
+      resetImageView(panel);
       img.removeAttribute('src');
       img.classList.remove('loaded');
       placeholder.classList.remove('hidden');
@@ -326,7 +444,9 @@
     if (rect.width <= 0 || rect.height <= 0) { return; }
     const sx = rect.width / vs.naturalW;
     const sy = rect.height / vs.naturalH;
-    const scale = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.min(sx, sy)));
+    const scale = Math.min(1, Math.min(sx, sy));
+    if (!Number.isFinite(scale) || scale <= 0) { return; }
+    vs.fitScale = scale;
     vs.scale = scale;
     vs.x = Math.max(0, (rect.width - vs.naturalW * scale) / 2);
     vs.y = Math.max(0, (rect.height - vs.naturalH * scale) / 2);
@@ -349,7 +469,8 @@
   function zoomBy(panel, factor, anchorX, anchorY) {
     const vs = viewState[panel];
     if (!vs.naturalW) { return; }
-    const newScale = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, vs.scale * factor));
+    const minScale = Math.min(ZOOM_MIN, vs.fitScale || ZOOM_MIN);
+    const newScale = Math.max(minScale, Math.min(ZOOM_MAX, vs.scale * factor));
     if (newScale === vs.scale) { return; }
     if (typeof anchorX === 'number' && typeof anchorY === 'number') {
       // Keep the point under the cursor stationary.
