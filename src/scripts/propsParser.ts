@@ -225,8 +225,15 @@ export function parseCachedPropsJson(jsonText: string): PropsJsonEnvelope {
     throw new Error('Cached props JSON must be an object.');
   }
   const obj = parsed as Record<string, unknown>;
-  if ('_cacheVersion' in obj && !Number.isInteger(obj['_cacheVersion'])) {
-    throw new Error('Props cache version must be an integer when present.');
+  if ('_cacheVersion' in obj) {
+    if (!Number.isInteger(obj['_cacheVersion'])) {
+      throw new Error('Props cache version must be an integer when present.');
+    }
+    if ((obj['_cacheVersion'] as number) > PROPS_CACHE_VERSION) {
+      throw new Error(
+        `Props cache version ${String(obj['_cacheVersion'])} is newer than supported version ${PROPS_CACHE_VERSION}.`,
+      );
+    }
   }
   return parsePropsJson(jsonText);
 }
