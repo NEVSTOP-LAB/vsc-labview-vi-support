@@ -277,10 +277,9 @@ Sub ConnectLabVIEW()
     Do While Now < deadline
         attempts = attempts + 1
 
-            If Len(targetExe) > 0 And attempts = 1 Then
+        If ShouldActivateTargetInstance(attempts) Then
             StartTargetLabVIEW targetExe
-            WScript.Sleep 700
-            If TryReuseRunningLabVIEW(lastMismatch) Then
+            If WaitForReusableTargetInstance(2500, lastMismatch) Then
                 Exit Sub
             End If
         End If
@@ -317,10 +316,6 @@ Sub ConnectLabVIEW()
             Set app = Nothing
         End If
         On Error GoTo 0
-
-        If Len(targetExe) > 0 And (attempts Mod 2 = 0) Then
-            StartTargetLabVIEW targetExe
-        End If
 
         WScript.Sleep retryIntervalMs
     Loop
@@ -375,6 +370,22 @@ Function TryReuseRunningLabVIEW(ByRef mismatchMessage)
     On Error GoTo 0
 End Function
 
+Function WaitForReusableTargetInstance(ByVal waitMilliseconds, ByRef mismatchMessage)
+    Dim elapsedMilliseconds
+
+    WaitForReusableTargetInstance = False
+    elapsedMilliseconds = 0
+
+    Do While elapsedMilliseconds < waitMilliseconds
+        WScript.Sleep 200
+        elapsedMilliseconds = elapsedMilliseconds + 200
+        If TryReuseRunningLabVIEW(mismatchMessage) Then
+            WaitForReusableTargetInstance = True
+            Exit Function
+        End If
+    Loop
+End Function
+
 Function ShouldActivateTargetInstance(ByVal attemptNumber)
     If Len(targetExe) = 0 Then
         ShouldActivateTargetInstance = False
@@ -391,8 +402,8 @@ Function AppMatches(ByVal appDir, ByVal appVer)
     If Len(expectedDirectory) > 0 Then
         If StrComp(NormalizePath(appDir), NormalizePath(expectedDirectory), vbTextCompare) = 0 Then
             AppMatches = True
-            Exit Function
         End If
+        Exit Function
     End If
     If Len(expectedVersion) > 0 Then
         If LCase(Left(appVer, Len(expectedVersion))) = LCase(expectedVersion) Then

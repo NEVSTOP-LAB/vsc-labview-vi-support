@@ -306,14 +306,14 @@ Sub ConnectLabVIEW()
     Do While Now() < deadlineMs
         attempts = attempts + 1
 
-            If Len(targetExe) > 0 And attempts = 1 Then
+        If ShouldActivateTargetInstance(attempts) Then
             StartTargetLabVIEW targetExe
-            WScript.Sleep 700
-            If TryReuseRunningLabVIEW(expectedDirNorm, lastMismatch) Then
+            If WaitForReusableTargetInstance(expectedDirNorm, 2500, lastMismatch) Then
                 Exit Sub
             End If
         End If
 
+        On Error Resume Next
         Err.Clear
         Set app = CreateObject("LabVIEW.Application")
         If Err.Number = 0 Then
@@ -350,10 +350,7 @@ Sub ConnectLabVIEW()
             createErr = "CreateObject failed: " & Err.Description
             Err.Clear
         End If
-
-        If Len(targetExe) > 0 And (attempts Mod 2 = 0) Then
-            StartTargetLabVIEW targetExe
-        End If
+        On Error GoTo 0
 
         WScript.Sleep retryIntervalMs
     Loop
@@ -407,6 +404,22 @@ Function TryReuseRunningLabVIEW(ByVal expectedDirNorm, ByRef mismatchMessage)
         ReleaseComObject candidate
     End If
     On Error GoTo 0
+End Function
+
+Function WaitForReusableTargetInstance(ByVal expectedDirNorm, ByVal waitMilliseconds, ByRef mismatchMessage)
+    Dim elapsedMilliseconds
+
+    WaitForReusableTargetInstance = False
+    elapsedMilliseconds = 0
+
+    Do While elapsedMilliseconds < waitMilliseconds
+        WScript.Sleep 200
+        elapsedMilliseconds = elapsedMilliseconds + 200
+        If TryReuseRunningLabVIEW(expectedDirNorm, mismatchMessage) Then
+            WaitForReusableTargetInstance = True
+            Exit Function
+        End If
+    Loop
 End Function
 
 Function ShouldActivateTargetInstance(ByVal attemptNumber)
@@ -477,17 +490,21 @@ End Sub
 
 Function MatchesTarget(ByVal appDir, ByVal appVer, ByVal expectedDirNorm, ByVal expectedVer)
     MatchesTarget = False
-    If Len(expectedDirNorm) = 0 And Len(expectedVer) = 0 Then
-        MatchesTarget = True
+    If Len(expectedDirNorm) > 0 Then
+        If NormalizePath(appDir) = expectedDirNorm Then
+            MatchesTarget = True
+        End If
         Exit Function
     End If
-    If Len(expectedDirNorm) > 0 Then
-        If NormalizePath(appDir) <> expectedDirNorm Then Exit Function
-    End If
     If Len(expectedVer) > 0 Then
-        If LCase(Left(appVer, Len(expectedVer))) <> LCase(expectedVer) Then Exit Function
+        If LCase(Left(appVer, Len(expectedVer))) = LCase(expectedVer) Then
+            MatchesTarget = True
+            Exit Function
+        End If
     End If
-    MatchesTarget = True
+    If Len(expectedDirNorm) = 0 And Len(expectedVer) = 0 Then
+        MatchesTarget = True
+    End If
 End Function
 
 Function SafeGetAppDirectory(ByRef appRef)
