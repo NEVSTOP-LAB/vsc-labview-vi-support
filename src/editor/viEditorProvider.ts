@@ -630,11 +630,11 @@ class ViEditorSession {
     if (raw === null) {
       return null;
     }
-    // 通过 parsePropsJson 走一次校验，可在缓存被人为篡改、或后续 schema
-    // 升级导致旧条目不再兼容时安全地返回 null。代价仅为一次 JSON 往返，
-    // 而 props.json 体积很小，可以忽略不计。
+    // 先做一次结构校验；只要缓存结构仍兼容，就保留已有值，
+    // 再按当前元数据补齐缺失条目并回写，避免插件升级时整包失效。
     try {
-      return parseCachedPropsJson(JSON.stringify(raw));
+      const cached = parseCachedPropsJson(JSON.stringify(raw));
+      return await this.ensureStaticProps(entry, cached);
     } catch {
       return null;
     }

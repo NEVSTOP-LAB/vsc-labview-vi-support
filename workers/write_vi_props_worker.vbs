@@ -51,7 +51,7 @@ Const REQUEST_PART_VAL    = "val"
 ' 注意（需要在真实 LabVIEW 环境中验证）
 ' ------------------------------------
 ' 本脚本基于 read_vi_props_worker.vbs 的访问模式编写，但写入语义与具体
-' LabVIEW 版本相关：例如 HistoryText 在某些 VI 上可能因元数据损坏而失败；
+' LabVIEW 版本相关：部分属性会受 VI 状态或版本差异影响而失败；
 ' SaveInstrument 要求 VI 处于可保存状态。
 ' 单个属性写入失败会被独立报告，不会阻塞其他属性的写入。
 ' ===========================================================================
@@ -104,14 +104,29 @@ Dim writableMeta
 Set writableMeta = CreateObject("Scripting.Dictionary")
 writableMeta.CompareMode = 1 ' textual
 writableMeta.Add "Description",       "String|vi"
-writableMeta.Add "HistoryText",       "String|vi"
-writableMeta.Add "AllowDebugging",    "Boolean|vi"
-writableMeta.Add "ShowFPOnCall",      "Boolean|vi"
-writableMeta.Add "CloseFPAfterCall",  "Boolean|vi"
-writableMeta.Add "IsReentrant",       "Boolean|vi"
+writableMeta.Add "RevisionNumber",    "String|vi"
+writableMeta.Add "EditMode",          "Boolean|vi"
 writableMeta.Add "RunOnOpen",         "Boolean|vi"
 writableMeta.Add "PreferredExecSystem", "Number|vi"
-writableMeta.Add "ExecPriority",      "Number|vi"
+writableMeta.Add "ShowFPOnCall",      "Boolean|vi"
+writableMeta.Add "ShowFPOnLoad",      "Boolean|vi"
+writableMeta.Add "AllowDebugging",    "Boolean|vi"
+writableMeta.Add "IsReentrant",       "Boolean|vi"
+writableMeta.Add "ReentrancyType",    "Number|vi"
+writableMeta.Add "CloseFPAfterCall",  "Boolean|vi"
+writableMeta.Add "FPState",           "Number|vi"
+writableMeta.Add "FPWinBounds",       "String|vi"
+writableMeta.Add "FPWinTitle",        "String|vi"
+writableMeta.Add "FPRunTransparently", "Boolean|vi"
+writableMeta.Add "FPTransparency",    "Number|vi"
+writableMeta.Add "FPResizable",       "Boolean|vi"
+writableMeta.Add "FPMinimizable",     "Boolean|vi"
+writableMeta.Add "FPShowMenuBar",     "Boolean|vi"
+writableMeta.Add "TBVisible",         "Boolean|vi"
+writableMeta.Add "TBShowRunButton",   "Boolean|vi"
+writableMeta.Add "TBShowAbortButton", "Boolean|vi"
+writableMeta.Add "FPWinIsFrontMost",  "Boolean|vi"
+writableMeta.Add "FPWinClosable",     "Boolean|vi"
 
 ' ---------------------------------------------------------------------------
 ' 顶层执行
@@ -342,14 +357,29 @@ End Sub
 Sub AssignProp(ByRef obj, ByVal propName, ByVal propType, ByVal newVal)
     Select Case propName
         Case "Description"        : obj.Description       = CStr(newVal)
-        Case "HistoryText"        : obj.HistoryText       = CStr(newVal)
-        Case "AllowDebugging"     : obj.AllowDebugging    = CoerceBool(newVal)
-        Case "ShowFPOnCall"       : obj.ShowFPOnCall      = CoerceBool(newVal)
-        Case "CloseFPAfterCall"   : obj.CloseFPAfterCall  = CoerceBool(newVal)
-        Case "IsReentrant"        : obj.IsReentrant       = CoerceBool(newVal)
+        Case "RevisionNumber"     : obj.RevisionNumber    = CStr(newVal)
+        Case "EditMode"           : obj.EditMode          = CoerceBool(newVal)
         Case "RunOnOpen"          : obj.RunOnOpen         = CoerceBool(newVal)
         Case "PreferredExecSystem": obj.PreferredExecSystem = CLng(newVal)
-        Case "ExecPriority"       : obj.ExecPriority      = CLng(newVal)
+        Case "ShowFPOnCall"       : obj.ShowFPOnCall      = CoerceBool(newVal)
+        Case "ShowFPOnLoad"       : obj.ShowFPOnLoad      = CoerceBool(newVal)
+        Case "AllowDebugging"     : obj.AllowDebugging    = CoerceBool(newVal)
+        Case "IsReentrant"        : obj.IsReentrant       = CoerceBool(newVal)
+        Case "ReentrancyType"     : obj.ReentrancyType    = CLng(newVal)
+        Case "CloseFPAfterCall"   : obj.CloseFPAfterCall  = CoerceBool(newVal)
+        Case "FPState"            : obj.FPState           = CLng(newVal)
+        Case "FPWinBounds"        : obj.FPWinBounds       = CoerceBounds(newVal)
+        Case "FPWinTitle"         : obj.FPWinTitle        = CStr(newVal)
+        Case "FPRunTransparently" : obj.FPRunTransparently = CoerceBool(newVal)
+        Case "FPTransparency"     : obj.FPTransparency    = CLng(newVal)
+        Case "FPResizable"        : obj.FPResizable       = CoerceBool(newVal)
+        Case "FPMinimizable"      : obj.FPMinimizable     = CoerceBool(newVal)
+        Case "FPShowMenuBar"      : obj.FPShowMenuBar     = CoerceBool(newVal)
+        Case "TBVisible"          : obj.TBVisible         = CoerceBool(newVal)
+        Case "TBShowRunButton"    : obj.TBShowRunButton   = CoerceBool(newVal)
+        Case "TBShowAbortButton"  : obj.TBShowAbortButton = CoerceBool(newVal)
+        Case "FPWinIsFrontMost"   : obj.FPWinIsFrontMost  = CoerceBool(newVal)
+        Case "FPWinClosable"      : obj.FPWinClosable     = CoerceBool(newVal)
         Case Else
             Err.Raise vbObjectError + 200, , "Unsupported property: " & propName
     End Select
@@ -361,14 +391,29 @@ Function ReadBackVi(ByRef viRef, ByVal propName)
     val = ""
     Select Case propName
         Case "Description"        : val = CStr(viRef.Description)
-        Case "HistoryText"        : val = CStr(viRef.HistoryText)
-        Case "AllowDebugging"     : val = CStr(viRef.AllowDebugging)
-        Case "ShowFPOnCall"       : val = CStr(viRef.ShowFPOnCall)
-        Case "CloseFPAfterCall"   : val = CStr(viRef.CloseFPAfterCall)
-        Case "IsReentrant"        : val = CStr(viRef.IsReentrant)
+        Case "RevisionNumber"     : val = CStr(viRef.RevisionNumber)
+        Case "EditMode"           : val = CStr(viRef.EditMode)
         Case "RunOnOpen"          : val = CStr(viRef.RunOnOpen)
         Case "PreferredExecSystem": val = CStr(viRef.PreferredExecSystem)
-        Case "ExecPriority"       : val = CStr(viRef.ExecPriority)
+        Case "ShowFPOnCall"       : val = CStr(viRef.ShowFPOnCall)
+        Case "ShowFPOnLoad"       : val = CStr(viRef.ShowFPOnLoad)
+        Case "AllowDebugging"     : val = CStr(viRef.AllowDebugging)
+        Case "IsReentrant"        : val = CStr(viRef.IsReentrant)
+        Case "ReentrancyType"     : val = CStr(viRef.ReentrancyType)
+        Case "CloseFPAfterCall"   : val = CStr(viRef.CloseFPAfterCall)
+        Case "FPState"            : val = CStr(viRef.FPState)
+        Case "FPWinBounds"        : val = FormatBoundsValue(viRef.FPWinBounds)
+        Case "FPWinTitle"         : val = CStr(viRef.FPWinTitle)
+        Case "FPRunTransparently" : val = CStr(viRef.FPRunTransparently)
+        Case "FPTransparency"     : val = CStr(viRef.FPTransparency)
+        Case "FPResizable"        : val = CStr(viRef.FPResizable)
+        Case "FPMinimizable"      : val = CStr(viRef.FPMinimizable)
+        Case "FPShowMenuBar"      : val = CStr(viRef.FPShowMenuBar)
+        Case "TBVisible"          : val = CStr(viRef.TBVisible)
+        Case "TBShowRunButton"    : val = CStr(viRef.TBShowRunButton)
+        Case "TBShowAbortButton"  : val = CStr(viRef.TBShowAbortButton)
+        Case "FPWinIsFrontMost"   : val = ""
+        Case "FPWinClosable"      : val = CStr(viRef.FPWinClosable)
     End Select
     If Err.Number <> 0 Then val = "" : Err.Clear
     On Error GoTo 0
@@ -385,6 +430,55 @@ Function CoerceBool(ByVal value)
     Else
         CoerceBool = CBool(value)
     End If
+End Function
+
+Function CoerceBounds(ByVal value)
+    Dim normalized
+    Dim parts
+    Dim bounds(3)
+    Dim index
+
+    normalized = Replace(Replace(Trim(CStr(value)), " ", ""), vbTab, "")
+    If Len(normalized) = 0 Then
+        Err.Raise vbObjectError + 201, , "FPWinBounds requires four comma-separated integers."
+    End If
+
+    parts = Split(normalized, ",")
+    If UBound(parts) <> 3 Then
+        Err.Raise vbObjectError + 202, , "FPWinBounds requires four comma-separated integers."
+    End If
+
+    For index = 0 To 3
+        bounds(index) = CLng(parts(index))
+    Next
+    CoerceBounds = bounds
+End Function
+
+Function FormatBoundsValue(ByVal bounds)
+    Dim lowerBound
+    Dim upperBound
+    Dim index
+    Dim parts()
+
+    On Error Resume Next
+    If IsArray(bounds) Then
+        lowerBound = LBound(bounds)
+        upperBound = UBound(bounds)
+        If Err.Number = 0 Then
+            ReDim parts(upperBound - lowerBound)
+            For index = lowerBound To upperBound
+                parts(index - lowerBound) = CStr(bounds(index))
+            Next
+            If Err.Number = 0 Then
+                FormatBoundsValue = Join(parts, ",")
+                On Error GoTo 0
+                Exit Function
+            End If
+            Err.Clear
+        End If
+    End If
+    FormatBoundsValue = CStr(bounds)
+    On Error GoTo 0
 End Function
 
 ' ===========================================================================

@@ -134,89 +134,228 @@ Sub ReadAllProperties(ByRef stream)
     Dim ok
     Dim errMsg
 
-    ' 全局 On Error Resume Next，逐属性检查 Err.Number
     On Error Resume Next
 
-    ' -----------------------------------------------------------------------
-    ' String 属性
-    ' -----------------------------------------------------------------------
-
-    ' Name — VI 文件名（不含路径），只读
     val = "" : Err.Clear
     val = CStr(vi.Name)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
     WritePropLine stream, "Name", "String", ok, val, errMsg
 
-    ' Path — VI 文件完整路径，只读
     val = "" : Err.Clear
     val = CStr(vi.Path)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
     WritePropLine stream, "Path", "String", ok, val, errMsg
 
-    ' Description — VI 描述，可读写
+    val = "" : Err.Clear
+    val = ReadOwningAppSummary(vi)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "OwningApp", "String", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.VIType)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "VIType", "Number", ok, val, errMsg
+
     val = "" : Err.Clear
     val = CStr(vi.Description)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
     WritePropLine stream, "Description", "String", ok, val, errMsg
 
-    ' HistoryText — 修订历史日志，可读写
     val = "" : Err.Clear
-    val = CStr(vi.HistoryText)
+    val = CStr(vi.RevisionNumber)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "HistoryText", "String", ok, val, errMsg
+    WritePropLine stream, "RevisionNumber", "String", ok, val, errMsg
 
-    ' -----------------------------------------------------------------------
-    ' Boolean 属性
-    ' -----------------------------------------------------------------------
-
-    ' AllowDebugging — 允许调试，可读写
     val = "" : Err.Clear
-    val = CStr(vi.AllowDebugging)
+    val = CStr(vi.EditMode)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "AllowDebugging", "Boolean", ok, val, errMsg
+    WritePropLine stream, "EditMode", "Boolean", ok, val, errMsg
 
-    ' ShowFPOnCall — 被调用时显示前面板，可读写
     val = "" : Err.Clear
-    val = CStr(vi.ShowFPOnCall)
+    val = CStr(vi.ExecState)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "ShowFPOnCall", "Boolean", ok, val, errMsg
+    WritePropLine stream, "ExecState", "Number", ok, val, errMsg
 
-    ' CloseFPAfterCall — 调用完毕后关闭前面板，可读写
-    val = "" : Err.Clear
-    val = CStr(vi.CloseFPAfterCall)
-    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "CloseFPAfterCall", "Boolean", ok, val, errMsg
-
-    ' IsReentrant — 是否可重入，可读写
-    val = "" : Err.Clear
-    val = CStr(vi.IsReentrant)
-    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "IsReentrant", "Boolean", ok, val, errMsg
-
-    ' RunOnOpen — 打开后自动运行，可读写
     val = "" : Err.Clear
     val = CStr(vi.RunOnOpen)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
     WritePropLine stream, "RunOnOpen", "Boolean", ok, val, errMsg
 
-    ' -----------------------------------------------------------------------
-    ' Number 属性
-    ' -----------------------------------------------------------------------
-
-    ' PreferredExecSystem — 首选执行系统，可读写
     val = "" : Err.Clear
     val = CStr(vi.PreferredExecSystem)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
     WritePropLine stream, "PreferredExecSystem", "Number", ok, val, errMsg
 
-    ' ExecPriority — 执行优先级，可读写
     val = "" : Err.Clear
-    val = CStr(vi.ExecPriority)
+    val = CStr(vi.ShowFPOnCall)
     ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
-    WritePropLine stream, "ExecPriority", "Number", ok, val, errMsg
+    WritePropLine stream, "ShowFPOnCall", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.ShowFPOnLoad)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "ShowFPOnLoad", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.AllowDebugging)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "AllowDebugging", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.IsReentrant)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "IsReentrant", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.ReentrancyType)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "ReentrancyType", "Number", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.CloseFPAfterCall)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "CloseFPAfterCall", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.FPState)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "FPState", "Number", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = FormatBoundsValue(vi.FPWinBounds)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "FPWinBounds", "String", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.FPWinTitle)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "FPWinTitle", "String", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.FPRunTransparently)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "FPRunTransparently", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.FPTransparency)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "FPTransparency", "Number", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.FPResizable)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "FPResizable", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.FPMinimizable)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "FPMinimizable", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.FPShowMenuBar)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "FPShowMenuBar", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.TBVisible)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "TBVisible", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.TBShowRunButton)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "TBShowRunButton", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.TBShowAbortButton)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "TBShowAbortButton", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.FPWinClosable)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "FPWinClosable", "Boolean", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.BDSize)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "BDSize", "Number", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.FPSize)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "FPSize", "Number", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.CodeSize)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "CodeSize", "Number", ok, val, errMsg
+
+    val = "" : Err.Clear
+    val = CStr(vi.DataSize)
+    ok = (Err.Number = 0) : errMsg = Err.Description : Err.Clear
+    WritePropLine stream, "DataSize", "Number", ok, val, errMsg
 
     On Error GoTo 0
 End Sub
+
+Function ReadOwningAppSummary(ByRef viRef)
+    Dim owningApp
+    Dim appDir
+    Dim appVer
+
+    ReadOwningAppSummary = ""
+    Set owningApp = Nothing
+
+    On Error Resume Next
+    Err.Clear
+    Set owningApp = viRef.OwningApp
+    If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        Exit Function
+    End If
+
+    appDir = SafeGetAppDirectory(owningApp)
+    appVer = SafeGetAppVersion(owningApp)
+    If Len(appVer) > 0 And Len(appDir) > 0 Then
+        ReadOwningAppSummary = appVer & " | " & appDir
+    ElseIf Len(appDir) > 0 Then
+        ReadOwningAppSummary = appDir
+    Else
+        ReadOwningAppSummary = appVer
+    End If
+
+    ReleaseComObject owningApp
+    On Error GoTo 0
+End Function
+
+Function FormatBoundsValue(ByVal bounds)
+    Dim lowerBound
+    Dim upperBound
+    Dim index
+    Dim parts()
+
+    On Error Resume Next
+    If IsArray(bounds) Then
+        lowerBound = LBound(bounds)
+        upperBound = UBound(bounds)
+        If Err.Number = 0 Then
+            ReDim parts(upperBound - lowerBound)
+            For index = lowerBound To upperBound
+                parts(index - lowerBound) = CStr(bounds(index))
+            Next
+            If Err.Number = 0 Then
+                FormatBoundsValue = Join(parts, ",")
+                On Error GoTo 0
+                Exit Function
+            End If
+            Err.Clear
+        End If
+    End If
+    FormatBoundsValue = CStr(bounds)
+    On Error GoTo 0
+End Function
 
 ' ===========================================================================
 ' 写入单个属性的响应行

@@ -21,7 +21,7 @@
   // -------------------------------------------------------------------------
   // State
   // -------------------------------------------------------------------------
-  /** @type {Record<string, {original: string|null, current: string, type: string, writable: boolean, editing?: boolean}>} */
+  /** @type {Record<string, {original: string|null, current: string, type: string, writable: boolean, accessMode?: string, editing?: boolean}>} */
   const propRows = {};
   let viewMode = 'table-only';   // 'both' | 'table-only' | 'preview-only'
   let previewMode = 'both';      // 'fp' | 'bd' | 'both'
@@ -50,19 +50,12 @@
       { value: 6, label: '6 (其他 2)' },
       { value: 7, label: '7 (与调用者相同)' },
     ],
-    ExecPriority: [
-      { value: 0, label: '0 (后台)' },
-      { value: 1, label: '1 (正常)' },
-      { value: 2, label: '2 (较高)' },
-      { value: 3, label: '3 (高)' },
-      { value: 4, label: '4 (时间关键)' },
-      { value: 5, label: '5 (子程序)' },
-    ],
   };
   const DEFAULT_GROUP_LABELS = {
-    identity: '基础信息',
-    execution: '执行设置',
-    panel: '前面板行为',
+    general: '通用信息',
+    execution: '行为与执行控制',
+    panel: '前面板窗口外观与行为',
+    memory: '内部结构与内存信息',
     other: '其他属性',
   };
   const DEFAULT_SOURCE_DESCRIPTIONS = {
@@ -841,8 +834,14 @@
     }
   }
 
-  function normalizeEditableValue(name, type, value) {
+  function normalizeEditableValue(name, type, value, accessMode) {
     const text = value == null ? '' : String(value);
+    if (accessMode === 'writeonly' && text === '') {
+      if (type === 'Boolean') {
+        return 'True';
+      }
+      return '';
+    }
     if (type === 'Boolean') {
       return (text === 'True' || text === '1' || text === '-1') ? 'True' : 'False';
     }
@@ -852,7 +851,10 @@
     return text;
   }
 
-  function formatValueForDisplay(name, type, value) {
+  function formatValueForDisplay(name, type, value, accessMode) {
+    if (accessMode === 'writeonly' && (value == null || value === '')) {
+      return '';
+    }
     if (type === 'Boolean') {
       return value === 'True' ? '是 (True)' : '否 (False)';
     }
@@ -887,7 +889,7 @@
     }));
   }
 
-  function buildEditorControl(host, name, type, value, onChange) {
+  function buildEditorControl(host, name, type, value, accessMode, onChange) {
     if (type === 'Boolean') {
       const select = document.createElement('select');
       [['True', '是 (True)'], ['False', '否 (False)']].forEach(([val, label]) => {
@@ -896,7 +898,7 @@
         opt.textContent = label;
         select.appendChild(opt);
       });
-      select.value = value;
+      select.value = value || (accessMode === 'writeonly' ? 'True' : 'False');
       select.addEventListener('change', () => onChange(select.value));
       host.appendChild(select);
       return select;
@@ -922,7 +924,7 @@
       host.appendChild(input);
       return input;
     }
-    if (type === 'String' && (name === 'Description' || name === 'HistoryText')) {
+    if (type === 'String' && name === 'Description') {
       const ta = document.createElement('textarea');
       ta.value = value;
       ta.addEventListener('input', () => onChange(ta.value));
@@ -944,7 +946,7 @@
     td.innerHTML = '';
 
     if (slot.editing) {
-      const focusTarget = buildEditorControl(td, name, slot.type, slot.current, (raw) => {
+      const focusTarget = buildEditorControl(td, name, slot.type, slot.current, slot.accessMode, (raw) => {
         slot.current = raw;
         syncDirtyState(td, name);
         updateSaveButton();
@@ -959,7 +961,7 @@
 
     const display = document.createElement('div');
     display.className = 'value-display';
-    const displayValue = formatValueForDisplay(name, slot.type, slot.current);
+    const displayValue = formatValueForDisplay(name, slot.type, slot.current, slot.accessMode);
     if (displayValue) {
       display.textContent = displayValue;
     } else {
@@ -1048,12 +1050,13 @@
         } else {
           const value = entry.value == null ? '' : String(entry.value);
           if (writable) {
-            const normalizedValue = normalizeEditableValue(name, entry.type, value);
+            const normalizedValue = normalizeEditableValue(name, entry.type, value, entry.accessMode);
             propRows[name] = {
               original: normalizedValue,
               current: normalizedValue,
               type: entry.type,
               writable: true,
+              accessMode: entry.accessMode,
               editing: false,
             };
             rerenderEditableRow(tdRw, tdVal, name, entry);

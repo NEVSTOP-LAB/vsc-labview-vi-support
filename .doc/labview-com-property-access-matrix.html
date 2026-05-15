@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LabVIEW COM VI 属性访问权限对照表</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f4ee;
+      --panel: #fffdf8;
+      --text: #1f1a17;
+      --muted: #6d6258;
+      --line: #d7c9b8;
+      --accent: #9e4f2a;
+      --ok: #24613a;
+      --warn: #9a5a11;
+      --diff: #9a2f2f;
+      --head: #efe5d6;
+      --code: #f4ede3;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 32px 20px 48px;
+      background: linear-gradient(180deg, #ede7dc 0%, var(--bg) 180px);
+      color: var(--text);
+      font: 16px/1.6 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 28px 28px 36px;
+      box-shadow: 0 10px 30px rgba(73, 48, 24, 0.08);
+    }
+
+    h1, h2 {
+      margin: 0 0 16px;
+      line-height: 1.25;
+    }
+
+    h1 {
+      font-size: 30px;
+    }
+
+    h2 {
+      margin-top: 32px;
+      font-size: 22px;
+      border-top: 1px solid var(--line);
+      padding-top: 24px;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    .lede {
+      color: var(--muted);
+      max-width: 920px;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin: 22px 0 8px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 16px;
+      background: #fff;
+    }
+
+    .card strong {
+      display: block;
+      font-size: 24px;
+      line-height: 1.1;
+      margin-bottom: 6px;
+    }
+
+    .card span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .note {
+      margin: 18px 0 0;
+      padding: 14px 16px;
+      border-left: 4px solid var(--accent);
+      background: #fff8f0;
+      color: var(--text);
+    }
+
+    ul {
+      margin: 12px 0 0 20px;
+      padding: 0;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      background: var(--code);
+      border-radius: 6px;
+      padding: 1px 6px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      margin-top: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 920px;
+      background: #fff;
+    }
+
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      background: var(--head);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .status-match {
+      color: var(--ok);
+      font-weight: 700;
+    }
+
+    .status-diff {
+      color: var(--diff);
+      font-weight: 700;
+    }
+
+    .mono {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+    }
+
+    .foot {
+      margin-top: 28px;
+      padding-top: 18px;
+      border-top: 1px dashed var(--line);
+      color: var(--muted);
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>LabVIEW COM VI 属性访问权限对照表</h1>
+    <p class="lede">这份对照表用于核对“参考文档中的 LabVIEW COM 属性权限说明”与当前分支实现之间的差异。当前代码基线来自 <code>src/scripts/propMetadata.ts</code>，写入白名单同步来自 <code>workers/write_vi_props_worker.vbs</code> 与 <code>workers/labview_session_host.vbs</code>。</p>
+
+    <section class="summary" aria-label="summary">
+      <div class="card">
+        <strong>34</strong>
+        <span>当前纳入代码表的属性总数</span>
+      </div>
+      <div class="card">
+        <strong>32</strong>
+        <span>与参考文档权限一致的属性</span>
+      </div>
+      <div class="card">
+        <strong>1</strong>
+        <span>与参考文档权限存在差异的属性</span>
+      </div>
+      <div class="card">
+        <strong>1</strong>
+        <span>额外加入的非 COM 侦测属性</span>
+      </div>
+    </section>
+
+    <div class="note">
+      结论：参考文档中的 33 项 COM 属性里，除 <code>Name</code> 外，当前代码中的访问权限都与参考文档一致。另有 1 个额外扩展项 <code>SavedVersion</code>，用于展示从文件头侦测到的 VI 保存版本。
+    </div>
+
+    <h2>说明</h2>
+    <ul>
+      <li>参考权限列来自你提供的 COM 属性分组文档。</li>
+      <li>当前代码权限列直接对应 <code>readonly</code>、<code>readwrite</code>、<code>writeonly</code> 三种实现语义。</li>
+      <li><code>SavedVersion</code> 是额外扩展出的静态属性，不属于参考文档中的 COM 读取项。</li>
+      <li><code>OwningApp</code> 当前以“版本 | 安装目录”的摘要字符串展示，不直接暴露 COM 对象引用。</li>
+      <li><code>FPWinBounds</code> 当前以 <code>left,top,right,bottom</code> 字符串序列化读写。</li>
+      <li><code>FPWinIsFrontMost</code> 是只写项，当前表格中保留占位，但不会读回当前值。</li>
+    </ul>
+
+    <h2>通用信息</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>属性名</th>
+            <th>参考权限</th>
+            <th>当前代码权限</th>
+            <th>当前类型</th>
+            <th>当前来源</th>
+            <th>状态</th>
+            <th>备注</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">SavedVersion</td><td>不在参考 COM 列表中</td><td>只读</td><td>String</td><td>静态</td><td class="status-match">扩展项</td><td>从 VI 文件头侦测到的保存版本，不通过 COM 读取。</td></tr>
+          <tr><td class="mono">Name</td><td>条件可写</td><td>只读</td><td>String</td><td>静态</td><td class="status-diff">差异</td><td>参考文档注记为“仅在未保存到磁盘时可写”；当前实现统一收口为只读。</td></tr>
+          <tr><td class="mono">Path</td><td>只读</td><td>只读</td><td>String</td><td>静态</td><td class="status-match">一致</td><td>直接返回 VI 路径。</td></tr>
+          <tr><td class="mono">OwningApp</td><td>只读</td><td>只读</td><td>String</td><td>动态</td><td class="status-match">一致</td><td>当前展示为应用版本与目录摘要字符串。</td></tr>
+          <tr><td class="mono">VIType</td><td>只读</td><td>只读</td><td>Number</td><td>动态</td><td class="status-match">一致</td><td>当前返回枚举值。</td></tr>
+          <tr><td class="mono">Description</td><td>读写</td><td>读写</td><td>String</td><td>动态</td><td class="status-match">一致</td><td>当前支持编辑与写回。</td></tr>
+          <tr><td class="mono">RevisionNumber</td><td>读写</td><td>读写</td><td>String</td><td>动态</td><td class="status-match">一致</td><td>当前按字符串处理。</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>行为与执行控制</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>属性名</th>
+            <th>参考权限</th>
+            <th>当前代码权限</th>
+            <th>当前类型</th>
+            <th>当前来源</th>
+            <th>状态</th>
+            <th>备注</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">EditMode</td><td>读写</td><td>读写</td><td>Boolean</td><td>动态</td><td class="status-match">一致</td><td>当前支持写回。</td></tr>
+          <tr><td class="mono">ExecState</td><td>只读</td><td>只读</td><td>Number</td><td>动态</td><td class="status-match">一致</td><td>当前返回执行状态枚举值。</td></tr>
+          <tr><td class="mono">RunOnOpen</td><td>读写</td><td>读写</td><td>Boolean</td><td>动态</td><td class="status-match">一致</td><td>当前支持写回。</td></tr>
+          <tr><td class="mono">PreferredExecSystem</td><td>读写</td><td>读写</td><td>Number</td><td>动态</td><td class="status-match">一致</td><td>当前已在 WebView 中提供枚举下拉。</td></tr>
+          <tr><td class="mono">ShowFPOnCall</td><td>读写</td><td>读写</td><td>Boolean</td><td>动态</td><td class="status-match">一致</td><td>当前支持写回。</td></tr>
+          <tr><td class="mono">ShowFPOnLoad</td><td>读写</td><td>读写</td><td>Boolean</td><td>动态</td><td class="status-match">一致</td><td>当前支持写回。</td></tr>
+          <tr><td class="mono">AllowDebugging</td><td>读写</td><td>读写</td><td>Boolean</td><td>动态</td><td class="status-match">一致</td><td>当前支持写回。</td></tr>
+          <tr><td class="mono">IsReentrant</td><td>读写</td><td>读写</td><td>Boolean</td><td>动态</td><td class="status-match">一致</td><td>当前支持写回。</td></tr>
+          <tr><td class="mono">ReentrancyType</td><td>读写</td><td>读写</td><td>Number</td><td>动态</td><td class="status-match">一致</td><td>当前返回并写回枚举值。</td></tr>
+          <tr><td class="mono">CloseFPAfterCall</td><td>读写</td><td>读写</td><td>Boolean</td><td>动态</td><td class="status-match">一致</td><td>当前支持写回。</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>前面板窗口外观与行为</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>属性名</th>
+            <th>参考权限</th>
+            <th>当前代码权限</th>
+            <th>当前类型</th>
+            <th>当前来源</th>
+            <th>状态</th>
+            <th>备注</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">FPState</td><td>读写</td><td>读写</td><td>Number</td><td>动态</td><td class="status-match">一致</td><td>当前返回并写回枚举值。</td></tr>
+          <tr><td class="mono">FPWinBounds</td><td>读写</td><td>读写</td><td>String</td><td>动态</td><td class="status-match">一致</td><td>当前以 <code>left,top,right,bottom</code> 字符串序列化。</td></tr>
+          <tr><td class="mono">FPWinTitle</td><td>读写</td><td>读写</td><td>String</td><td>动态</td><td class="status-match">一致</td><td>当前支持写回。</td></tr>
+          <tr><td class="mono">FPRunTransparently</td><td>读写</td><td>读写</td><td>Boolean</td><td>动态</td><td class="status-match">一致</td><td>当前支持写回。</td></tr>
+          <tr><td class="mono">FPTransparency</td><td>读写</td><td>读写</td><td>Number</td><td>动态</td><td class="status-match">一致</td><td>当前按数值写回。</td></tr>
+          <tr><td class="mono">FPResizable</td><td>读写</td><td>读写</td><td>Boolean</td><td>动态</td><td class="status-match">一致</td><td>当前支持写回。</td></tr>
+          <tr><td class="mono">FPMinimizable</td><td>读写</td><td>读写</td><td>Boolean</td><td>动态</td><td class="status-match">一致</td><td>当前支持写回。</td></tr>
+          <tr><td class="mono">FPShowMenuBar</td><td>读写</td><td>读写</td><td>Boolean</td><td>动态</td><td class="status-match">一致</td><td>当前支持写回。</td></tr>
+          <tr><td class="mono">TBVisible</td><td>读写</td><td>读写</td><td>Boolean</td><td>动态</td><td class="status-match">一致</td><td>当前支持写回。</td></tr>
+          <tr><td class="mono">TBShowRunButton</td><td>读写</td><td>读写</td><td>Boolean</td><td>动态</td><td class="status-match">一致</td><td>当前支持写回。</td></tr>
+          <tr><td class="mono">TBShowAbortButton</td><td>读写</td><td>读写</td><td>Boolean</td><td>动态</td><td class="status-match">一致</td><td>当前支持写回。</td></tr>
+          <tr><td class="mono">FPWinIsFrontMost</td><td>只写</td><td>只写</td><td>Boolean</td><td>动态</td><td class="status-match">一致</td><td>当前不读回值，只提供写入动作。</td></tr>
+          <tr><td class="mono">FPWinClosable</td><td>读写</td><td>读写</td><td>Boolean</td><td>动态</td><td class="status-match">一致</td><td>当前支持写回。</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>内部结构与内存信息</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>属性名</th>
+            <th>参考权限</th>
+            <th>当前代码权限</th>
+            <th>当前类型</th>
+            <th>当前来源</th>
+            <th>状态</th>
+            <th>备注</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">BDSize</td><td>只读</td><td>只读</td><td>Number</td><td>动态</td><td class="status-match">一致</td><td>当前返回字节数。</td></tr>
+          <tr><td class="mono">FPSize</td><td>只读</td><td>只读</td><td>Number</td><td>动态</td><td class="status-match">一致</td><td>当前返回字节数。</td></tr>
+          <tr><td class="mono">CodeSize</td><td>只读</td><td>只读</td><td>Number</td><td>动态</td><td class="status-match">一致</td><td>当前返回字节数。</td></tr>
+          <tr><td class="mono">DataSize</td><td>只读</td><td>只读</td><td>Number</td><td>动态</td><td class="status-match">一致</td><td>当前返回字节数。</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="foot">备注：这份文档描述的是当前实现状态，不替代后续真实 LabVIEW 环境下的联机验证结果。如果后续扩展继续调整权限或值序列化方式，应同步更新本页。</p>
+  </main>
+</body>
+</html>
