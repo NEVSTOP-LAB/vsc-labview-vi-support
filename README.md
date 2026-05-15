@@ -60,7 +60,7 @@
 ## 运行环境
 
 扩展运行时通过 VS Code 自带的 Node 扩展宿主调用内置的 Windows Script Host
-worker（`prototype/scripts/*.vbs`），这些 worker 再通过 ActiveX/COM 与
+worker（`workers/*.vbs`），这些 worker 再通过 ActiveX/COM 与
 LabVIEW 通信，因此：
 
 - **仅支持 Windows**：VI Server 桥接基于 COM。
@@ -94,8 +94,9 @@ LabVIEW 通信，因此：
 
 当前运行时已不再依赖 Python 解释器；已安装 LabVIEW 版本探测走扩展宿主内的
 TypeScript + PowerShell/注册表链路，属性读写与图像导出走扩展内置的
-TypeScript + VBS worker 链路。`prototype/scripts/*.py` 仍保留为原型/调研
-代码，不是客户环境所必需的运行时前置。
+TypeScript + VBS worker 链路。`prototype/` 目录仅保留仓库内的原型/调研
+内容，不进入正式 VSIX，也不是客户环境所必需的运行时前置。
+扩展源码与正式分发均不依赖 `prototype/` 中的任何文件。
 
 ## 本地开发
 
@@ -111,7 +112,8 @@ npm test               # 完整集成测试（需要从网络下载 VS Code）
 ## 项目结构
 
 ```text
-prototype/scripts/      # VBS worker + 保留的 Python 原型脚本
+workers/                # 随扩展打包的 VBS worker
+prototype/              # 原型/诊断脚本与样例（不进入正式 VSIX）
 src/
   cache/viCache.ts      # MD5 缓存
   scripts/              # 与 WSH/LabVIEW worker 对话的纯 TS 适配层
