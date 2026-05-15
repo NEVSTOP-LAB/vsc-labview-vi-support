@@ -3,6 +3,8 @@ Option Explicit
 ' Suffix values are compared against LCase(...) for case-insensitive key parsing.
 Const REQUEST_SUFFIX_TYPE = "_type"
 Const REQUEST_SUFFIX_VAL  = "_val"
+Const REQUEST_PART_TYPE   = "type"
+Const REQUEST_PART_VAL    = "val"
 
 ' ===========================================================================
 ' write_vi_props_worker.vbs
@@ -236,10 +238,10 @@ Function ParseRequestFile(ByVal pathText)
                     suffix = ""
                     If Len(rest) > Len(REQUEST_SUFFIX_TYPE) And LCase(Right(rest, Len(REQUEST_SUFFIX_TYPE))) = REQUEST_SUFFIX_TYPE Then
                         propName = Left(rest, Len(rest) - Len(REQUEST_SUFFIX_TYPE))
-                        suffix = "type"
+                        suffix = REQUEST_PART_TYPE
                     ElseIf Len(rest) > Len(REQUEST_SUFFIX_VAL) And LCase(Right(rest, Len(REQUEST_SUFFIX_VAL))) = REQUEST_SUFFIX_VAL Then
                         propName = Left(rest, Len(rest) - Len(REQUEST_SUFFIX_VAL))
-                        suffix = "val"
+                        suffix = REQUEST_PART_VAL
                     End If
                     If Len(propName) > 0 Then
                         Dim existing
@@ -256,9 +258,9 @@ Function ParseRequestFile(ByVal pathText)
                                 partVal = Mid(existing, sep + 1)
                             End If
                         End If
-                        If suffix = "type" Then
+                        If suffix = REQUEST_PART_TYPE Then
                             partType = value
-                        ElseIf suffix = "val" Then
+                        ElseIf suffix = REQUEST_PART_VAL Then
                             partVal = value
                         End If
                         dict.Item(propName) = partType & "|" & partVal

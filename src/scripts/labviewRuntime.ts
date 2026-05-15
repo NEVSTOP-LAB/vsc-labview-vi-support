@@ -521,6 +521,7 @@ function inferArchitectureFromInstallDir(installDir: string): LabVIEWArchitectur
 
 function inferArchitectureFromHost(): LabVIEWArchitecture | null {
   // Last-resort fallback: this reflects extension host bitness, not the LabVIEW EXE bitness.
+  // It is only used when PE machine detection and install-directory heuristics both fail.
   // It prioritizes discoverability and may still fail later if LabVIEW bitness differs during COM activation.
   if (process.arch === 'ia32') {
     return 'x86';
