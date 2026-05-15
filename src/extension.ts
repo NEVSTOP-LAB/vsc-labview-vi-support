@@ -7,6 +7,7 @@ import {
 } from './cache/cacheDirectory';
 import { ViEditorProvider } from './editor/viEditorProvider';
 import { LabVIEWVersionStatusController } from './labviewVersionStatus';
+import { disposeLabVIEWSessions } from './scripts/labviewRuntime';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const versionStatus = new LabVIEWVersionStatusController();
@@ -19,7 +20,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   await versionStatus.refresh();
 }
 
-export function deactivate(): void {}
+export function deactivate(): void {
+  disposeLabVIEWSessions();
+}
 
 async function syncCacheDirectorySetting(context: vscode.ExtensionContext): Promise<void> {
   const cacheRoot = ViEditorProvider.cacheRoot(context);

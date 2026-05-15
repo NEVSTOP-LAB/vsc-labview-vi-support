@@ -12,6 +12,7 @@ import * as path from 'path';
  */
 export interface ScriptPaths {
   readonly root: string;
+  readonly sessionHostWorker: string;
   readonly savePanelImageWorker: string;
   readonly readPropsWorker: string;
   readonly writePropsWorker: string;
@@ -21,6 +22,7 @@ export function resolveScriptPaths(extensionRoot: string): ScriptPaths {
   const root = path.join(extensionRoot, 'workers');
   return {
     root,
+    sessionHostWorker: path.join(root, 'labview_session_host.vbs'),
     savePanelImageWorker: path.join(root, 'save_vi_panel_image_worker.vbs'),
     readPropsWorker:      path.join(root, 'read_vi_props_worker.vbs'),
     writePropsWorker:     path.join(root, 'write_vi_props_worker.vbs'),
