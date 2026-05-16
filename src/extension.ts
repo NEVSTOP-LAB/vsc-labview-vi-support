@@ -69,12 +69,6 @@ function registerCommands(
       },
     ),
     vscode.commands.registerCommand(
-      'labview-vi-support.helloWorld',
-      () => {
-        void vscode.window.showInformationMessage('Hello from LabVIEW VI Support!');
-      },
-    ),
-    vscode.commands.registerCommand(
       'labview-vi-support.openCacheDirectory',
       async () => {
         const cacheRoot = ViEditorProvider.cacheRoot(context);

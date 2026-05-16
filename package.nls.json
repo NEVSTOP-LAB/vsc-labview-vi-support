@@ -1,6 +1,5 @@
 {
   "commands.category": "LabVIEW VI",
-  "commands.helloWorld": "Hello World",
   "commands.openCacheDirectory": "Open Cache Directory",
   "commands.clearCache": "Clear Cache",
   "commands.configureLabVIEWVersion": "Configure LabVIEW Version",

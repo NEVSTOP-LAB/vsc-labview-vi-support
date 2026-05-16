@@ -73,6 +73,7 @@ Dim connectedDirectory
 Dim exportedOutputPath
 Dim exportedFpOutputPath
 Dim exportedBdOutputPath
+Dim g_exportRoot
 
 Set app              = Nothing
 Set vi               = Nothing
@@ -84,11 +85,16 @@ connectedDirectory   = ""
 exportedOutputPath   = ""
 exportedFpOutputPath = ""
 exportedBdOutputPath = ""
+g_exportRoot         = ""
 
 On Error Resume Next
 Main
 If Err.Number <> 0 Then
     reason = Err.Description
+    If Len(g_exportRoot) > 0 Then
+        CleanupFolder g_exportRoot
+        g_exportRoot = ""
+    End If
     WriteResponse False
     WScript.Quit 3
 End If
@@ -147,7 +153,6 @@ End Sub
 Sub ExportPanelImages(ByRef viRef, ByVal fpFinalOutputPath, ByVal bdFinalOutputPath)
     Dim fso
     Dim tempRoot
-    Dim exportRoot
     Dim htmlPath
     Dim imageDir
     Dim sourcePath
@@ -156,18 +161,19 @@ Sub ExportPanelImages(ByRef viRef, ByVal fpFinalOutputPath, ByVal bdFinalOutputP
 
     Set fso = CreateObject("Scripting.FileSystemObject")
     tempRoot = GetTempFolder()
-    exportRoot = BuildUniqueTempDir(tempRoot, "lv-html-export-")
-    htmlPath = fso.BuildPath(exportRoot, "export.html")
-    imageDir = fso.BuildPath(exportRoot, "images")
+    g_exportRoot = BuildUniqueTempDir(tempRoot, "lv-html-export-")
+    htmlPath = fso.BuildPath(g_exportRoot, "export.html")
+    imageDir = fso.BuildPath(g_exportRoot, "images")
     htmlExported = False
     exportError = ""
 
-    If Not fso.FolderExists(exportRoot) Then fso.CreateFolder exportRoot
+    If Not fso.FolderExists(g_exportRoot) Then fso.CreateFolder g_exportRoot
     If Not fso.FolderExists(imageDir) Then fso.CreateFolder imageDir
 
     If Len(fpFinalOutputPath) > 0 Then
-        If Not TrySaveFrontPanelImage(viRef, fpFinalOutputPath, exportRoot, htmlPath, imageDir, htmlExported, exportError) Then
-            CleanupFolder exportRoot
+        If Not TrySaveFrontPanelImage(viRef, fpFinalOutputPath, g_exportRoot, htmlPath, imageDir, htmlExported, exportError) Then
+            CleanupFolder g_exportRoot
+            g_exportRoot = ""
             Err.Raise vbObjectError + 107, , exportError
             Exit Sub
         End If
@@ -176,13 +182,15 @@ Sub ExportPanelImages(ByRef viRef, ByVal fpFinalOutputPath, ByVal bdFinalOutputP
 
     If Len(bdFinalOutputPath) > 0 Then
         If Not EnsureHtmlExport(viRef, htmlPath, imageDir, htmlExported, exportError) Then
-            CleanupFolder exportRoot
+            CleanupFolder g_exportRoot
+            g_exportRoot = ""
             Err.Raise vbObjectError + 106, , exportError
             Exit Sub
         End If
         sourcePath = FindExportedImage(imageDir, "d.png")
         If Len(sourcePath) = 0 Then
-            CleanupFolder exportRoot
+            CleanupFolder g_exportRoot
+            g_exportRoot = ""
             Err.Raise vbObjectError + 108, , "LabVIEW HTML export did not produce *d.png."
             Exit Sub
         End If
@@ -191,7 +199,8 @@ Sub ExportPanelImages(ByRef viRef, ByVal fpFinalOutputPath, ByVal bdFinalOutputP
         exportedBdOutputPath = bdFinalOutputPath
     End If
 
-    CleanupFolder exportRoot
+    CleanupFolder g_exportRoot
+    g_exportRoot = ""
 End Sub
 
 Function TrySaveFrontPanelImage(ByRef viRef, ByVal finalOutputPath, ByVal exportRoot, ByVal htmlPath, ByVal imageDir, ByRef htmlExported, ByRef errorMessage)

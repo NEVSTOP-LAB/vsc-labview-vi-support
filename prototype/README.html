@@ -30,12 +30,16 @@
     ├── discover_installed_labviews.py   # 独立探测本机 LabVIEW 安装（注册表 + PE 头）
     ├── read_vi_version.py                # 读取 VI 保存版本（纯文件头，无需 LabVIEW）
     ├── read_vi_description.py            # 读取 VI Description（通过 COM/ActiveX）
-    ├── read_vi_description_worker.vbs    # VBScript COM Worker（供上脚本调用）
     ├── read_vi_props.py                  # 读取 VI 全部可访问属性（通过 COM/ActiveX）
-    ├── read_vi_props_worker.vbs          # VBScript COM Worker（供上脚本调用）
     ├── read_vi_icon.py                   # 直接解析 RSRC 导出 VI 图标（纯文件）
     └── save_vi_panel_image.py            # 通过 Python + VI Server 导出前/背面板图片
 </code></pre>
+
+<div class="note">
+  <strong>注意：</strong>VBScript COM Worker（<code>.vbs</code>）的正式版本位于仓库根目录的
+  <code>workers/</code> 目录下，由扩展运行时直接调用。
+  <code>prototype/scripts/</code> 中不再保留 <code>.vbs</code> 副本，以避免调试时指向过时版本。
+</div>
 
 <h2>discover_installed_labviews.py — 探测本机 LabVIEW 安装</h2>
 
