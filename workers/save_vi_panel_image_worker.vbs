@@ -91,7 +91,10 @@ On Error Resume Next
 Main
 If Err.Number <> 0 Then
     reason = Err.Description
-    If Len(g_exportRoot) > 0 Then CleanupFolder g_exportRoot
+    If Len(g_exportRoot) > 0 Then
+        CleanupFolder g_exportRoot
+        g_exportRoot = ""
+    End If
     WriteResponse False
     WScript.Quit 3
 End If
