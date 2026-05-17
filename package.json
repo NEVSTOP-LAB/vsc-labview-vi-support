@@ -30,7 +30,10 @@
     "Other"
   ],
   "activationEvents": [
-    "onCustomEditor:labview-vi-support.viEditor"
+    "onCustomEditor:labview-vi-support.viEditor",
+    "onCommand:labview-vi-support.openCacheDirectory",
+    "onCommand:labview-vi-support.clearCache",
+    "onCommand:labview-vi-support.configureLabVIEWVersion"
   ],
   "main": "./dist/extension.js",
   "contributes": {
