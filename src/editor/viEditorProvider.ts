@@ -100,6 +100,7 @@ export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViD
       this.getRuntimeOptions(),
       () => this.currentViewMode,
       async (viewMode) => this.updateConfiguredViewMode(viewMode),
+      { vscode },
     );
     this.sessions.add(session);
 
