@@ -17,7 +17,7 @@ read_vi_props.py
 工作方式
 --------
 与 read_vi_description.py 相同的版本识别、安装定位、位数匹配机制；
-只是 VBScript worker 换成 read_vi_props_worker.vbs，
+读取逻辑由持久会话宿主 `workers/labview_session_host.vbs` 执行，
 它会对每个属性单独尝试读取（On Error Resume Next 保护），
 某个属性不可用时只记录错误，不影响其他属性的读取。
 
@@ -34,7 +34,6 @@ import re
 import struct
 import subprocess
 import sys
-import tempfile
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -60,7 +59,9 @@ _PE_MACHINE_I386 = 0x014C
 _PE_MACHINE_AMD64 = 0x8664
 
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-_PROPS_WORKER_SCRIPT = os.path.join(_REPO_ROOT, "workers", "read_vi_props_worker.vbs")
+_SESSION_HOST_SCRIPT = os.path.join(_REPO_ROOT, "workers", "labview_session_host.vbs")
+_RESPONSE_BEGIN = "__LABVIEW_RESPONSE_BEGIN__"
+_RESPONSE_END = "__LABVIEW_RESPONSE_END__"
 
 # ---------------------------------------------------------------------------
 # 属性元数据：(type, writable, description)
@@ -408,32 +409,14 @@ def format_connection_report(report: _ConnectionReport) -> list[str]:
     return lines
 
 
-# ---------------------------------------------------------------------------
-# 解析属性响应文件
-# ---------------------------------------------------------------------------
-def _parse_props_response(response_path: str, stderr: str) -> dict:
-    """
-    解析 read_vi_props_worker.vbs 写入的响应文件。
-
-    响应文件中每个属性占三行：
-        prop_<Name>_type=String|Boolean|Number
-        prop_<Name>_ok=1|0
-        prop_<Name>_val=<Base64>      (ok=1)
-        prop_<Name>_errmsg=<Base64>   (ok=0)
-
-    键名规则：prop_ 前缀 + 属性名（无下划线）+ _ + 后缀
-    """
-    if not os.path.isfile(response_path):
-        raise RuntimeError(stderr.strip() or "COM worker 未生成响应文件。")
-
+def _parse_props_response_text(text: str) -> dict:
     raw: dict[str, str] = {}
-    with open(response_path, "r", encoding="ascii", errors="strict") as f:
-        for line in f:
-            line = line.rstrip("\r\n")
-            if not line or "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            raw[k] = v
+    for line in text.splitlines():
+        line = line.rstrip("\r\n")
+        if not line or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        raw[k] = v
 
     result: dict = {
         "ok":                raw.get("ok") == "1",
@@ -444,6 +427,10 @@ def _parse_props_response(response_path: str, stderr: str) -> dict:
         "attempts":          int(raw.get("attempts", "0") or "0"),
         "props":             {},
     }
+    if "saved" in raw:
+        result["saved"] = raw.get("saved") == "1"
+    if "save_errmsg_b64" in raw:
+        result["save_error"] = _decode_worker_field(raw.get("save_errmsg_b64", ""))
 
     # 解析 prop_<Name>_<suffix> 行
     # 后缀只有: type, ok, val, errmsg  —— 均不含下划线，rfind("_") 分割正确
@@ -484,15 +471,77 @@ def _parse_props_response(response_path: str, stderr: str) -> dict:
     return result
 
 
+def _parse_props_response(response_path: str, stderr: str) -> dict:
+    if not os.path.isfile(response_path):
+        raise RuntimeError(stderr.strip() or "COM worker 未生成响应文件。")
+    with open(response_path, "r", encoding="ascii", errors="strict") as f:
+        return _parse_props_response_text(f.read())
+
+
 # ---------------------------------------------------------------------------
 # Worker 调用
 # ---------------------------------------------------------------------------
+def _extract_session_response(stdout: str, stderr: str) -> str:
+    capturing = False
+    lines: list[str] = []
+    for raw in stdout.splitlines():
+        line = raw.rstrip("\r\n")
+        if not capturing:
+            if line == _RESPONSE_BEGIN:
+                capturing = True
+                lines = []
+            continue
+        if line == _RESPONSE_END:
+            return "\n".join(lines)
+        lines.append(line)
+    raise RuntimeError(stderr.strip() or "LabVIEW 会话宿主未返回响应。")
+
+
+def _encode_b64_utf8(value: str) -> str:
+    return base64.b64encode(value.encode("utf-8")).decode("ascii")
+
+
+def _run_session_host_request(
+    installation: Optional[_InstalledLabVIEW],
+    host_executable: str,
+    request_lines: list[str],
+    timeout_seconds: int,
+) -> tuple[int, str, str, str]:
+    if not os.path.isfile(_SESSION_HOST_SCRIPT):
+        raise RuntimeError(f"缺少会话宿主脚本: {_SESSION_HOST_SCRIPT}")
+
+    command = [host_executable, "//Nologo", _SESSION_HOST_SCRIPT]
+    if installation is not None:
+        command.extend([
+            f"/targetExe:{installation.exe_path}",
+            f"/expectedDirectory:{installation.install_dir}",
+            f"/expectedVersion:{installation.major}.{installation.minor}",
+        ])
+
+    payload = "\n".join(request_lines) + "\n\n" + "command=shutdown\n\n"
+    try:
+        completed = subprocess.run(
+            command,
+            input=payload,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds + 10,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("LabVIEW 会话宿主超时，未在规定时间内完成请求。") from exc
+
+    response_text = _extract_session_response(completed.stdout, completed.stderr)
+    return completed.returncode, response_text, completed.stdout, completed.stderr
+
+
 def _run_props_worker(
     installation: Optional[_InstalledLabVIEW],
     report: _ConnectionReport,
     abs_vi_path: str,
 ) -> dict:
-    """调用 VBScript worker，更新 report，返回解析后的 props dict。"""
+    """调用 LabVIEW 会话宿主，更新 report，返回解析后的 props dict。"""
     host_architecture = (
         installation.architecture if installation is not None
         else ("x64" if sys.maxsize > 2**32 else "x86")
@@ -501,46 +550,18 @@ def _run_props_worker(
     report.host_architecture = host_architecture
     report.host_executable   = host_executable
 
-    if not os.path.isfile(_PROPS_WORKER_SCRIPT):
-        raise RuntimeError(f"缺少 COM worker 脚本: {_PROPS_WORKER_SCRIPT}")
-
-    resp_handle = tempfile.NamedTemporaryFile(
-        prefix="labview-vi-props-", suffix=".out", delete=False
-    )
-    response_path = resp_handle.name
-    resp_handle.close()
-
-    command = [
-        host_executable, "//Nologo", _PROPS_WORKER_SCRIPT,
-        f"/viPath:{abs_vi_path}",
-        f"/responsePath:{response_path}",
-        f"/timeoutSeconds:{_DEFAULT_WORKER_TIMEOUT_SECONDS}",
+    request_lines = [
+        "command=read-props",
+        f"timeoutSeconds={_DEFAULT_WORKER_TIMEOUT_SECONDS}",
+        f"viPath_b64={_encode_b64_utf8(abs_vi_path)}",
     ]
-    if installation is not None:
-        command.extend([
-            f"/targetExe:{installation.exe_path}",
-            f"/expectedDirectory:{installation.install_dir}",
-            f"/expectedVersion:{installation.major}.{installation.minor}",
-        ])
-
-    try:
-        completed = subprocess.run(
-            command, capture_output=True, text=True,
-            encoding="utf-8", errors="replace",
-            timeout=_DEFAULT_WORKER_TIMEOUT_SECONDS + 10,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            f"COM worker 超时，{host_architecture} 宿主未在规定时间内完成。"
-        ) from exc
-
-    try:
-        result = _parse_props_response(response_path, completed.stderr)
-    finally:
-        try:
-            os.remove(response_path)
-        except OSError:
-            pass
+    returncode, response_text, _stdout, stderr = _run_session_host_request(
+        installation,
+        host_executable,
+        request_lines,
+        _DEFAULT_WORKER_TIMEOUT_SECONDS,
+    )
+    result = _parse_props_response_text(response_text)
 
     # 更新诊断报告
     report.selection         = result.get("selection") or report.selection
@@ -551,9 +572,9 @@ def _run_props_worker(
     if isinstance(attempts, int):
         report.attempts = attempts
 
-    if completed.returncode != 0 or not result.get("ok", False):
+    if returncode != 0 or not result.get("ok", False):
         raise RuntimeError(
-            str(result.get("reason") or completed.stderr.strip() or "COM worker 执行失败。")
+            str(result.get("reason") or stderr.strip() or "会话宿主执行失败。")
         )
 
     return result.get("props", {})

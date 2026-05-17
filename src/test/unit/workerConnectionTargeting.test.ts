@@ -16,9 +16,6 @@ function getSubBody(scriptText: string, name: string): string {
 suite('worker connection targeting', () => {
   const cases = [
     { fileName: 'labview_session_host.vbs', subroutine: 'EnsureLabVIEWConnected' },
-    { fileName: 'save_vi_panel_image_worker.vbs', subroutine: 'ConnectLabVIEW' },
-    { fileName: 'read_vi_props_worker.vbs', subroutine: 'ConnectLabVIEW' },
-    { fileName: 'write_vi_props_worker.vbs', subroutine: 'ConnectLabVIEW' },
   ];
 
   for (const { fileName, subroutine } of cases) {

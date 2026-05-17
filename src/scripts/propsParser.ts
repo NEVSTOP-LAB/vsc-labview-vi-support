@@ -1,9 +1,7 @@
 /**
- * 解析以下两个 worker 输出的响应文件：
- *   - read_vi_props_worker.vbs
- *   - write_vi_props_worker.vbs
+ * 解析 LabVIEW 会话宿主（`labview_session_host.vbs`）输出的响应文本。
  *
- * 二者共用同一种 `key=value` 行格式：
+ * 响应使用 `key=value` 行格式：
  *
  *   ok=1|0
  *   selection=<ascii>
@@ -20,7 +18,7 @@
  *
  * 在扩展运行时，这些结果会被整理成 JSON 信封后再交给 WebView，
  * 因此本模块同时提供两种解析入口：
- *   1. `parsePropsResponseText` —— 直接解析原始响应文件；
+ *   1. `parsePropsResponseText` —— 直接解析原始响应文本；
  *   2. `parsePropsJson`         —— 校验运行时整理出的 JSON 信封，
  *                                  随后再喂给 WebView。
  */

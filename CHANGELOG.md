@@ -15,10 +15,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Removed
 
 - Removed the `labview-vi-support.helloWorld` scaffold command (was a `yo code` boilerplate leftover with no functional purpose).
+- Removed legacy one-shot VBS workers (`save_vi_panel_image_worker.vbs`, `read_vi_props_worker.vbs`, `write_vi_props_worker.vbs`) in favor of the persistent session host.
 
 ### Fixed
 
-- Fixed a potential temporary-directory leak in `save_vi_panel_image_worker.vbs`: the export working directory is now tracked at module scope and cleaned up in the top-level error handler, ensuring cleanup even when errors propagate past the normal cleanup paths.
+- Fixed a potential temporary-directory leak in the preview export pipeline: the export working directory is now always cleaned up even when errors propagate past normal cleanup paths.
 
 ---
 
@@ -27,8 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Custom editor (`labview-vi-support.viEditor`) for `.vi` and `.vit` files with three view modes: **both** (preview + properties table), **table-only**, and **preview-only**.
-- Front panel and block diagram image export via LabVIEW COM (`save_vi_panel_image_worker.vbs`).
-- Static and dynamic VI property reading/writing via LabVIEW COM (`read_vi_props_worker.vbs`, `write_vi_props_worker.vbs`).
+- Front panel/block diagram image export and VI property reading/writing via LabVIEW COM (driven by `labview_session_host.vbs`).
 - Persistent LabVIEW session host (`labview_session_host.vbs`) for reduced COM connection overhead across multiple operations.
 - Automatic LabVIEW version detection from the Windows registry; configurable via the **Configure LabVIEW Version** command.
 - Property cache keyed by file path and content hash; manual cache clear via the **Clear Cache** command.
