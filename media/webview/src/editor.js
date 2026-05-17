@@ -28,10 +28,10 @@
   let currentPropsEnvelope = null;
   let currentLoadingState = { fp: false, bd: false, props: false };
   let propsFilterText = '';
-  /** @type {Record<'fp'|'bd', { scale: number, fitScale: number, x: number, y: number, naturalW: number, naturalH: number }>} */
+  /** @type {Record<'fp'|'bd', { scale: number, fitScale: number, x: number, y: number, naturalW: number, naturalH: number, contentBounds: { left: number, top: number, width: number, height: number } | null }>} */
   const viewState = {
-    fp: { scale: 1, fitScale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0 },
-    bd: { scale: 1, fitScale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0 },
+    fp: { scale: 1, fitScale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0, contentBounds: null },
+    bd: { scale: 1, fitScale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0, contentBounds: null },
   };
   const ZOOM_MIN = 0.1;
   const ZOOM_MAX = 5.0;

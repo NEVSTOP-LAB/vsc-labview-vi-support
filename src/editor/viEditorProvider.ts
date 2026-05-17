@@ -173,9 +173,14 @@ export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViD
   }
 
   private renderHtml(webview: vscode.Webview): string {
-    const mediaRoot = vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview');
-    const styleUri  = webview.asWebviewUri(vscode.Uri.joinPath(mediaRoot, 'editor.css'));
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(mediaRoot, 'editor.js'));
+    const mediaRoot = path.join(this.context.extensionPath, 'media', 'webview');
+    const buildVersionedResourceUri = (fileName: string): vscode.Uri => {
+      const filePath = path.join(mediaRoot, fileName);
+      const version = Math.trunc(fs.statSync(filePath).mtimeMs).toString(36);
+      return webview.asWebviewUri(vscode.Uri.file(filePath)).with({ query: `v=${version}` });
+    };
+    const styleUri = buildVersionedResourceUri('editor.css');
+    const scriptUri = buildVersionedResourceUri('editor.js');
     const nonce = crypto.randomBytes(16).toString('base64');
     const initialPropsJson = JSON.stringify({
       dynamicPropsLoaded: false,

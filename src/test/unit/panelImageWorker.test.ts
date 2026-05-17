@@ -34,5 +34,14 @@ suite('panel image workers', () => {
       assert.match(captureBody, /TryNormalizeFrontPanelPng\(outputPath, outputPath, errorMessage\)/);
       assert.ok(scriptText.includes('Function BuildFrontPanelCropPowerShellScript()'));
     });
+
+    test(`${fileName} normalizes block diagram PNG before returning it`, () => {
+      const body = readWorkerScript(fileName);
+
+      assert.ok(body.includes('sourcePath = FindExportedImage(imageDir, "d.png")'));
+      assert.ok(body.includes('TryNormalizeFrontPanelPng(sourcePath, bdFinalOutputPath, exportError)'));
+      assert.ok(body.includes('Block diagram PNG normalization failed: '));
+      assert.ok(body.includes('Function BuildFrontPanelCropPowerShellScript()'));
+    });
   }
 });

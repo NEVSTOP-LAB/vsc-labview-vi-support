@@ -1008,8 +1008,10 @@ Sub ExportPanelImages(ByRef viRef, ByVal fpFinalOutputPath, ByVal bdFinalOutputP
             CleanupFolder exportRoot
             Err.Raise vbObjectError + 403, , "LabVIEW HTML export did not produce *d.png."
         End If
-        EnsureParentFolder bdFinalOutputPath
-        fso.CopyFile sourcePath, bdFinalOutputPath, True
+        If Not TryNormalizeFrontPanelPng(sourcePath, bdFinalOutputPath, exportError) Then
+            CleanupFolder exportRoot
+            Err.Raise vbObjectError + 404, , "Block diagram PNG normalization failed: " & exportError
+        End If
         exportedBdOutputPath = bdFinalOutputPath
         If Len(exportedOutputPath) = 0 Then
             exportedOutputPath = bdFinalOutputPath
