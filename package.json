@@ -148,6 +148,7 @@
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "node node_modules/typescript/bin/tsc --noEmit --watch --project tsconfig.json",
+    "watch:webview": "node --watch --watch-path=media/webview/src --watch-path=scripts/build-webview.js scripts/build-webview.js",
     "package": "node scripts/build-webview.js && npm run check-types && npm run lint && node esbuild.js --production",
     "package:vsix": "npx @vscode/vsce@3.9.1 package --skip-license --no-dependencies",
     "install:vsix": "node scripts/install-vsix.js",
