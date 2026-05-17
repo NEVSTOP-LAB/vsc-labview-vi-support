@@ -7,7 +7,6 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as vscode from 'vscode';
 
 import type { CacheEntry } from '../cache/viCache';
 import { ViCache } from '../cache/viCache';
@@ -34,11 +33,46 @@ import { isViewMode, type ViewMode } from './viewMode';
 import type { InboundMessage, OutboundState } from './viWebviewProtocol';
 import type { ViDocument } from './viEditorProvider';
 
+export interface ViEditorSessionVscodeApi {
+  RelativePattern: new (base: string, pattern: string) => unknown;
+  Disposable: { from(...disposables: Array<{ dispose(): void }>): { dispose(): void } };
+  Uri: { file(path: string): { fsPath: string } };
+  workspace: {
+    createFileSystemWatcher(pattern: unknown): {
+      onDidChange(listener: () => void): { dispose(): void };
+      onDidCreate(listener: () => void): { dispose(): void };
+      onDidDelete(listener: () => void): { dispose(): void };
+      dispose(): void;
+    };
+  };
+}
+
+export interface ViEditorSessionRuntime {
+  exportViPanelImages: typeof exportViPanelImages;
+  hasReusableLabVIEWConnection: typeof hasReusableLabVIEWConnection;
+  readStaticViProps: typeof readStaticViProps;
+  readViProps: typeof readViProps;
+  writeViProps: typeof writeViProps;
+}
+
+export interface ViEditorSessionDeps {
+  vscode: ViEditorSessionVscodeApi;
+  runtime?: ViEditorSessionRuntime;
+}
+
+const defaultRuntime: ViEditorSessionRuntime = {
+  exportViPanelImages,
+  hasReusableLabVIEWConnection,
+  readStaticViProps,
+  readViProps,
+  writeViProps,
+};
+
 export class ViEditorSession {
   private currentEntry: CacheEntry | null = null;
   private disposed = false;
   private previewExportDisabledReason: string | null = null;
-  private readonly disposables: vscode.Disposable[] = [];
+  private readonly disposables: Array<{ dispose(): void }> = [];
   private fileChangeTimer: NodeJS.Timeout | null = null;
   /** 保证任意时刻只有一个 loadAndPush 在运行（防止 initialize + ready 并发触发）。 */
   private _loadChain: Promise<void> = Promise.resolve();
@@ -49,18 +83,24 @@ export class ViEditorSession {
 
   public constructor(
     private readonly document: ViDocument,
-    private readonly panel: vscode.WebviewPanel,
+    private readonly panel: {
+      webview: {
+        postMessage(message: unknown): Promise<boolean> | { then(onfulfilled: (value: boolean) => void): unknown };
+        asWebviewUri(uri: { fsPath: string }): { toString(): string };
+      };
+    },
     private readonly cache: ViCache,
     private readonly scripts: ScriptPaths,
     private readonly runtimeOptions: LabVIEWRuntimeOptions,
     private readonly getViewMode: () => ViewMode,
     private readonly onViewModeChange: (viewMode: ViewMode) => Promise<void>,
+    private readonly deps: ViEditorSessionDeps,
   ) {
-    const filePattern = new vscode.RelativePattern(
+    const filePattern = new this.deps.vscode.RelativePattern(
       path.dirname(this.document.uri.fsPath),
       path.basename(this.document.uri.fsPath),
     );
-    const watcher = vscode.workspace.createFileSystemWatcher(filePattern);
+    const watcher = this.deps.vscode.workspace.createFileSystemWatcher(filePattern);
     const scheduleReload = () => this.scheduleExternalFileReload();
     this.disposables.push(
       watcher,
@@ -76,7 +116,7 @@ export class ViEditorSession {
       clearTimeout(this.fileChangeTimer);
       this.fileChangeTimer = null;
     }
-    vscode.Disposable.from(...this.disposables).dispose();
+    this.deps.vscode.Disposable.from(...this.disposables).dispose();
   }
 
   public async initialize(): Promise<void> {
@@ -333,7 +373,7 @@ export class ViEditorSession {
     if (this.isDynamicPropsLoaded(cachedProps)) {
       return false;
     }
-    return hasReusableLabVIEWConnection(this.document.uri.fsPath, this.scripts);
+    return (this.deps.runtime ?? defaultRuntime).hasReusableLabVIEWConnection(this.document.uri.fsPath, this.scripts);
   }
 
   private async exportPanels(
@@ -355,7 +395,12 @@ export class ViEditorSession {
       outputPaths.bd = entry.artifacts.bdImage;
     }
     try {
-      await exportViPanelImages(this.document.uri.fsPath, outputPaths, this.scripts, this.runtimeOptions);
+      await (this.deps.runtime ?? defaultRuntime).exportViPanelImages(
+        this.document.uri.fsPath,
+        outputPaths,
+        this.scripts,
+        this.runtimeOptions,
+      );
     } catch (err) {
       if (err instanceof UnsupportedPreviewExportError) {
         this.previewExportDisabledReason = err.message;
@@ -373,7 +418,11 @@ export class ViEditorSession {
 
   private async fetchProps(entry: CacheEntry): Promise<PropsJsonEnvelope | null> {
     try {
-      const env = await readViProps(this.document.uri.fsPath, this.scripts, this.runtimeOptions);
+      const env = await (this.deps.runtime ?? defaultRuntime).readViProps(
+        this.document.uri.fsPath,
+        this.scripts,
+        this.runtimeOptions,
+      );
       await this.cache.writeProps(entry, toCachedPropsJson(env));
       return env;
     } catch (err) {
@@ -390,7 +439,12 @@ export class ViEditorSession {
 
     let env: PropsJsonEnvelope;
     try {
-      env = await writeViProps(this.document.uri.fsPath, updates, this.scripts, this.runtimeOptions);
+      env = await (this.deps.runtime ?? defaultRuntime).writeViProps(
+        this.document.uri.fsPath,
+        updates,
+        this.scripts,
+        this.runtimeOptions,
+      );
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       await this.postError(`写入属性失败: ${detail}`);
@@ -516,7 +570,7 @@ export class ViEditorSession {
     entry: CacheEntry,
     existing: PropsJsonEnvelope | null = null,
   ): Promise<PropsJsonEnvelope> {
-    const staticEnv = await readStaticViProps(this.document.uri.fsPath);
+    const staticEnv = await (this.deps.runtime ?? defaultRuntime).readStaticViProps(this.document.uri.fsPath);
     const env = existing
       ? mergeStaticPropsIntoEnvelope(existing, staticEnv)
       : staticEnv;
@@ -566,7 +620,7 @@ export class ViEditorSession {
       const content = await fs.promises.readFile(absolutePath);
       return `data:image/png;base64,${content.toString('base64')}`;
     } catch {
-      return this.panel.webview.asWebviewUri(vscode.Uri.file(absolutePath)).toString();
+      return this.panel.webview.asWebviewUri(this.deps.vscode.Uri.file(absolutePath)).toString();
     }
   }
 }

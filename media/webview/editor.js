@@ -27,6 +27,7 @@
   let previewMode = 'both';      // 'fp' | 'bd' | 'both'
   let currentPropsEnvelope = null;
   let currentLoadingState = { fp: false, bd: false, props: false };
+  let propsFilterText = '';
   /** @type {Record<'fp'|'bd', { scale: number, fitScale: number, x: number, y: number, naturalW: number, naturalH: number }>} */
   const viewState = {
     fp: { scale: 1, fitScale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0 },
@@ -38,6 +39,7 @@
   const DEFAULT_SPLIT_RATIO = 0.6;
   const MIN_SPLIT_PANE_PX = 120;
   let splitRatio = DEFAULT_SPLIT_RATIO;
+  let mainLayout = 'vertical'; // 'vertical' | 'horizontal'
 
   // Enum metadata for known number-typed properties (mirrors read_vi_props.py).
   const NUMBER_ENUMS = {
@@ -109,7 +111,9 @@
   const btnBoth   = $('#btn-both');
   const btnLoadDynamic = $('#btn-load-dynamic');
   const btnSave   = $('#btn-save');
+  const btnLayout = $('#btn-layout');
   const btnReload = $('#btn-reload');
+  const propsSearch = $('#props-search');
   const statusEl  = $('#status');
   const previewControls = $('#preview-controls');
   const tableControls = $('#table-controls');
@@ -181,10 +185,36 @@
       if (isKnownViewMode(msg.viewMode)) {
         setViewMode(msg.viewMode, { persist: false });
       }
+    } else if (msg.type === 'command') {
+      handleHostCommand(msg.command);
     } else if (msg.type === 'error') {
       appendError(msg.message);
     }
   });
+
+  function handleHostCommand(command) {
+    if (command === 'reload') {
+      hideSourceTooltip();
+      clearErrors();
+      vscode.postMessage({ type: 'reload' });
+      return;
+    }
+    if (command === 'save') {
+      hideSourceTooltip();
+      const updates = collectUpdates();
+      if (Object.keys(updates).length === 0) { return; }
+      clearErrors();
+      btnSave.disabled = true;
+      vscode.postMessage({ type: 'saveProps', updates });
+      return;
+    }
+    if (command === 'preview-fp' || command === 'preview-bd') {
+      if (viewMode === 'table-only') {
+        setViewMode('preview-only', { persist: true });
+      }
+      setPreviewMode(command === 'preview-fp' ? 'fp' : 'bd');
+    }
+  }
 
   function applyState(state) {
     currentPropsEnvelope = state.props || null;
@@ -196,6 +226,7 @@
     setImage('bd', state.bdImage, state.loading && state.loading.bd);
     if (state.props && state.props.props) {
       renderTable(state.props.props);
+      applyPropsFilter();
     } else if (state.loading && state.loading.props) {
       renderLoadingTable();
     } else {
@@ -219,6 +250,7 @@
     errorsEl.innerHTML = '';
     errorsEl.hidden = true;
   }
+
 
   function hideSourceTooltip(target) {
     if (target && activeTooltipTarget !== target) {
@@ -272,9 +304,9 @@
     positionSourceTooltip(target);
   }
 
-  function clampImageAreaHeight(totalHeight, desiredHeight) {
-    const minPanePx = Math.min(MIN_SPLIT_PANE_PX, Math.floor(totalHeight / 2));
-    return Math.max(minPanePx, Math.min(totalHeight - minPanePx, desiredHeight));
+  function clampSplitSize(totalSize, desiredSize) {
+    const minPanePx = Math.min(MIN_SPLIT_PANE_PX, Math.floor(totalSize / 2));
+    return Math.max(minPanePx, Math.min(totalSize - minPanePx, desiredSize));
   }
 
   function parsePixelSize(value) {
@@ -346,10 +378,14 @@
     const previewVisible = isPreviewVisible();
     const tableVisible = isTableVisible();
     const bothVisible = previewVisible && tableVisible;
+    const horizontalSplit = bothVisible && mainLayout === 'horizontal';
 
     imageArea.classList.toggle('hidden', !previewVisible);
     tableArea.classList.toggle('hidden', !tableVisible);
     splitter.classList.toggle('hidden', !bothVisible);
+    main.classList.toggle('main-horizontal', horizontalSplit);
+    splitter.setAttribute('aria-orientation', horizontalSplit ? 'vertical' : 'horizontal');
+    splitter.setAttribute('aria-label', horizontalSplit ? '调整预览区域和属性表的宽度' : '调整预览区域和属性表的高度');
 
     if (!previewVisible) {
       imageArea.style.flex = '';
@@ -365,34 +401,41 @@
       return;
     }
 
-    const splitterHeight = splitter.getBoundingClientRect().height || 10;
-    const availableHeight = main.clientHeight - splitterHeight;
-    if (availableHeight <= 0) {
+    const splitterSize = horizontalSplit
+      ? (splitter.getBoundingClientRect().width || 10)
+      : (splitter.getBoundingClientRect().height || 10);
+    const availableSize = (horizontalSplit ? main.clientWidth : main.clientHeight) - splitterSize;
+    if (availableSize <= 0) {
       imageArea.style.flex = '1 1 60%';
       tableArea.style.flex = '1 1 40%';
       applyPreviewPaneLayout();
       return;
     }
 
-    const imageHeight = clampImageAreaHeight(
-      availableHeight,
-      Math.round(availableHeight * splitRatio),
+    const imageSize = clampSplitSize(
+      availableSize,
+      Math.round(availableSize * splitRatio),
     );
-    const tableHeight = Math.max(0, availableHeight - imageHeight);
-    splitRatio = imageHeight / availableHeight;
-    imageArea.style.flex = `0 0 ${imageHeight}px`;
-    tableArea.style.flex = `0 0 ${tableHeight}px`;
+    const tableSize = Math.max(0, availableSize - imageSize);
+    splitRatio = imageSize / availableSize;
+    imageArea.style.flex = `0 0 ${imageSize}px`;
+    tableArea.style.flex = `0 0 ${tableSize}px`;
     applyPreviewPaneLayout();
   }
 
-  function updateSplitRatioFromClientY(clientY) {
-    const splitterHeight = splitter.getBoundingClientRect().height || 10;
-    const availableHeight = main.clientHeight - splitterHeight;
-    if (availableHeight <= 0) { return; }
+  function updateSplitRatioFromPointer(clientX, clientY) {
+    const horizontalSplit = isPreviewVisible() && isTableVisible() && mainLayout === 'horizontal';
+    const splitterSize = horizontalSplit
+      ? (splitter.getBoundingClientRect().width || 10)
+      : (splitter.getBoundingClientRect().height || 10);
+    const availableSize = (horizontalSplit ? main.clientWidth : main.clientHeight) - splitterSize;
+    if (availableSize <= 0) { return; }
     const mainRect = main.getBoundingClientRect();
-    const rawImageHeight = clientY - mainRect.top - splitterHeight / 2;
-    const imageHeight = clampImageAreaHeight(availableHeight, rawImageHeight);
-    splitRatio = imageHeight / availableHeight;
+    const rawImageSize = horizontalSplit
+      ? (clientX - mainRect.left - splitterSize / 2)
+      : (clientY - mainRect.top - splitterSize / 2);
+    const imageSize = clampSplitSize(availableSize, rawImageSize);
+    splitRatio = imageSize / availableSize;
     applyMainLayout();
   }
 
@@ -665,10 +708,10 @@
     const pointerId = event.pointerId;
     document.body.classList.add('splitter-dragging');
     splitter.setPointerCapture(pointerId);
-    updateSplitRatioFromClientY(event.clientY);
+    updateSplitRatioFromPointer(event.clientX, event.clientY);
 
     const onPointerMove = (moveEvent) => {
-      updateSplitRatioFromClientY(moveEvent.clientY);
+      updateSplitRatioFromPointer(moveEvent.clientX, moveEvent.clientY);
     };
 
     const stopDragging = () => {
@@ -685,6 +728,7 @@
     splitter.addEventListener('pointerup', stopDragging);
     splitter.addEventListener('pointercancel', stopDragging);
   });
+
 
   // -------------------------------------------------------------------------
   // Toolbar
@@ -718,6 +762,15 @@
     const tableVisible = isTableVisible();
     previewControls.classList.toggle('hidden', !previewVisible);
     tableControls.classList.toggle('hidden', !tableVisible && !hasDirtyChanges());
+    if (btnLayout) {
+      const bothVisible = previewVisible && tableVisible;
+      btnLayout.classList.toggle('hidden', !bothVisible);
+      const horizontal = mainLayout === 'horizontal';
+      btnLayout.textContent = horizontal ? '上下布局' : '左右布局';
+      btnLayout.title = horizontal
+        ? '切换为上下布局（预览在上，属性表在下）'
+        : '切换为左右布局（预览在左，属性表在右）';
+    }
     updateDynamicUi();
   }
 
@@ -804,6 +857,13 @@
   btnFp.addEventListener('click',   () => setPreviewMode('fp'));
   btnBd.addEventListener('click',   () => setPreviewMode('bd'));
   btnBoth.addEventListener('click', () => setPreviewMode('both'));
+  if (btnLayout) {
+    btnLayout.addEventListener('click', () => {
+      mainLayout = mainLayout === 'horizontal' ? 'vertical' : 'horizontal';
+      updateToolbarVisibility();
+      refreshLayout();
+    });
+  }
 
   document.querySelectorAll('.pane-zoom-btn').forEach((button) => {
     button.addEventListener('click', () => {
@@ -841,9 +901,94 @@
     vscode.postMessage({ type: 'saveProps', updates });
   });
 
+  if (propsSearch) {
+    propsSearch.addEventListener('input', () => {
+      propsFilterText = String(propsSearch.value || '');
+      applyPropsFilter();
+    });
+  }
+
   // -------------------------------------------------------------------------
   // Property table
   // -------------------------------------------------------------------------
+  function propMatchesFilter(propName, entry, filter) {
+    if (!filter) {
+      return true;
+    }
+    const haystack = [
+      propName,
+      entry && entry.displayName,
+      entry && entry.description,
+    ]
+      .filter(Boolean)
+      .join('\n')
+      .toLowerCase();
+    return haystack.includes(filter);
+  }
+
+  function applyPropsFilter() {
+    const filter = String(propsFilterText || '').trim().toLowerCase();
+    const props = currentPropsEnvelope && currentPropsEnvelope.props ? currentPropsEnvelope.props : null;
+
+    const existingEmpty = tbody.querySelector('tr.filter-empty-row');
+    if (existingEmpty) {
+      existingEmpty.remove();
+    }
+
+    const allRows = Array.from(tbody.querySelectorAll('tr'));
+    if (!filter || !props) {
+      allRows.forEach((tr) => tr.classList.remove('filtered-out'));
+      return;
+    }
+
+    let anyVisibleProp = false;
+    for (const tr of allRows) {
+      const name = tr.dataset && tr.dataset.prop ? tr.dataset.prop : '';
+      if (!name) {
+        continue;
+      }
+      const entry = props[name] || {};
+      const ok = propMatchesFilter(name, entry, filter);
+      tr.classList.toggle('filtered-out', !ok);
+      if (ok) {
+        anyVisibleProp = true;
+      }
+    }
+
+    const children = Array.from(tbody.children);
+    let currentGroupRow = null;
+    let groupHasVisible = false;
+    for (const row of children) {
+      if (row.classList.contains('group-row')) {
+        if (currentGroupRow) {
+          currentGroupRow.classList.toggle('filtered-out', !groupHasVisible);
+        }
+        currentGroupRow = row;
+        groupHasVisible = false;
+        continue;
+      }
+      const isPropRow = !!(row.dataset && row.dataset.prop);
+      if (isPropRow && !row.classList.contains('filtered-out')) {
+        groupHasVisible = true;
+      }
+    }
+    if (currentGroupRow) {
+      currentGroupRow.classList.toggle('filtered-out', !groupHasVisible);
+    }
+
+    if (!anyVisibleProp) {
+      allRows.forEach((tr) => tr.classList.add('filtered-out'));
+      const tr = document.createElement('tr');
+      tr.className = 'filter-empty-row';
+      const td = document.createElement('td');
+      td.colSpan = 5;
+      td.className = 'empty';
+      td.textContent = '没有匹配的属性。';
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    }
+  }
+
   function collectPropGroups(props) {
     const groups = [];
     const seen = new Map();
@@ -1283,6 +1428,7 @@
       }
     }
     updateSaveButton();
+    applyPropsFilter();
   }
 
   function collectUpdates() {
@@ -1312,6 +1458,7 @@
     btnSave.disabled = !hasDirtyChanges();
     updateToolbarVisibility();
   }
+
 
   // -------------------------------------------------------------------------
   // Init

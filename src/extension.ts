@@ -9,6 +9,13 @@ import { ViEditorProvider } from './editor/viEditorProvider';
 import { LabVIEWVersionStatusController } from './labviewVersionStatus';
 import { disposeLabVIEWSessions } from './scripts/labviewRuntime';
 
+let activeViWebview: vscode.Webview | null = null;
+
+function setActiveViWebview(webview: vscode.Webview | null): void {
+  activeViWebview = webview;
+  void vscode.commands.executeCommand('setContext', 'viEditorActive', !!webview);
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const versionStatus = new LabVIEWVersionStatusController();
   context.subscriptions.push(versionStatus);
@@ -40,6 +47,7 @@ function registerEditorProvider(
 ): vscode.Disposable {
   return ViEditorProvider.register(context, {
     onActiveDocumentChanged: (uri) => versionStatus.setActiveResource(uri),
+    onActiveWebviewChanged: (webview) => setActiveViWebview(webview),
   });
 }
 
@@ -62,6 +70,18 @@ function registerCommands(
   versionStatus: LabVIEWVersionStatusController,
 ): vscode.Disposable[] {
   return [
+    vscode.commands.registerCommand('labview-vi-support.refreshEditor', async () => {
+      await activeViWebview?.postMessage({ type: 'command', command: 'reload' });
+    }),
+    vscode.commands.registerCommand('labview-vi-support.saveEditor', async () => {
+      await activeViWebview?.postMessage({ type: 'command', command: 'save' });
+    }),
+    vscode.commands.registerCommand('labview-vi-support.toggleFP', async () => {
+      await activeViWebview?.postMessage({ type: 'command', command: 'preview-fp' });
+    }),
+    vscode.commands.registerCommand('labview-vi-support.toggleBD', async () => {
+      await activeViWebview?.postMessage({ type: 'command', command: 'preview-bd' });
+    }),
     vscode.commands.registerCommand(
       'labview-vi-support.configureLabVIEWVersion',
       async () => {

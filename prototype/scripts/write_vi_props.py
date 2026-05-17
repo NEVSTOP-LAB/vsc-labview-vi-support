@@ -7,13 +7,13 @@ write_vi_props.py
 通过 LabVIEW ActiveX/COM 将一组属性写回 VI 文件，并调用 SaveInstrument 落盘。
 
 与 read_vi_props.py 共享版本识别 / 安装定位 / 位数匹配 / Base64 工具，
-实际写入由 write_vi_props_worker.vbs 完成（与读 worker 对称）。
+实际写入由 labview_session_host.vbs 完成（与读操作共用同一持久会话宿主）。
 
 仅支持 Windows 平台。
 
 ⚠️  实现说明
 -----------
-本脚本基于 read_vi_props.py / read_vi_props_worker.vbs 的访问模式编写，
+本脚本基于 read_vi_props.py 的访问模式编写，
 属于 "best-effort" 实现，需要在真实 LabVIEW 环境中验证：
 - 单个属性写入失败会被独立报告（同 read 行为），不会阻塞其他属性。
 - 写入完成后，默认调用 ``vi.SaveInstrument`` 将更改写入磁盘。
@@ -25,7 +25,6 @@ import argparse
 import base64
 import json
 import os
-import subprocess
 import sys
 import tempfile
 from typing import Optional
@@ -39,14 +38,13 @@ from read_vi_props import (  # type: ignore
     _InstalledLabVIEW,
     _PROP_META,
     _decode_worker_field,
+    _encode_b64_utf8,
     _ensure_windows,
+    _parse_props_response_text,
     _resolve_target_installation,
+    _run_session_host_request,
     _select_script_host,
     format_connection_report,
-)
-
-_WRITE_WORKER_SCRIPT = os.path.join(
-    os.path.dirname(__file__), "write_vi_props_worker.vbs"
 )
 
 # 与 worker 中 writableMeta 同步：可写属性名 -> ("type", "category")
@@ -228,48 +226,21 @@ def _run_write_worker(
     report.host_architecture = host_architecture
     report.host_executable   = host_executable
 
-    if not os.path.isfile(_WRITE_WORKER_SCRIPT):
-        raise RuntimeError(f"缺少 COM worker 脚本: {_WRITE_WORKER_SCRIPT}")
-
-    resp_handle = tempfile.NamedTemporaryFile(
-        prefix="labview-vi-write-resp-", suffix=".out", delete=False
-    )
-    response_path = resp_handle.name
-    resp_handle.close()
-
-    command = [
-        host_executable, "//Nologo", _WRITE_WORKER_SCRIPT,
-        f"/viPath:{abs_vi_path}",
-        f"/requestPath:{request_path}",
-        f"/responsePath:{response_path}",
-        f"/timeoutSeconds:{_DEFAULT_WORKER_TIMEOUT_SECONDS}",
-        f"/save:{'1' if save else '0'}",
+    request_lines = [
+        "command=write-props",
+        f"timeoutSeconds={_DEFAULT_WORKER_TIMEOUT_SECONDS}",
+        f"viPath_b64={_encode_b64_utf8(abs_vi_path)}",
+        f"requestPath_b64={_encode_b64_utf8(request_path)}",
+        f"save={'1' if save else '0'}",
     ]
-    if installation is not None:
-        command.extend([
-            f"/targetExe:{installation.exe_path}",
-            f"/expectedDirectory:{installation.install_dir}",
-            f"/expectedVersion:{installation.major}.{installation.minor}",
-        ])
+    returncode, response_text, _stdout, stderr = _run_session_host_request(
+        installation,
+        host_executable,
+        request_lines,
+        _DEFAULT_WORKER_TIMEOUT_SECONDS + 20,
+    )
 
-    try:
-        completed = subprocess.run(
-            command, capture_output=True, text=True,
-            encoding="utf-8", errors="replace",
-            timeout=_DEFAULT_WORKER_TIMEOUT_SECONDS + 30,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            f"COM worker 超时，{host_architecture} 宿主未在规定时间内完成。"
-        ) from exc
-
-    try:
-        result = _parse_write_response(response_path, completed.stderr)
-    finally:
-        try:
-            os.remove(response_path)
-        except OSError:
-            pass
+    result = _parse_props_response_text(response_text)
 
     report.selection           = result.get("selection") or report.selection
     report.reason              = result.get("reason")    or report.reason
@@ -279,9 +250,9 @@ def _run_write_worker(
     if isinstance(attempts, int):
         report.attempts = attempts
 
-    if completed.returncode != 0 or not result.get("ok", False):
+    if returncode != 0 or not result.get("ok", False):
         raise RuntimeError(
-            str(result.get("reason") or completed.stderr.strip() or "COM worker 执行失败。")
+            str(result.get("reason") or stderr.strip() or "会话宿主执行失败。")
         )
 
     return result

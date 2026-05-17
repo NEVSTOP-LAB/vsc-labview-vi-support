@@ -14,9 +14,9 @@ read_vi_description.py
 4. 选择位数匹配的 cscript.exe 作为宿主：
      x86 → C:\\Windows\\SysWOW64\\cscript.exe
      x64 → C:\\Windows\\System32\\cscript.exe
-5. 调用 VBScript worker（read_vi_description_worker.vbs），
-   通过 LabVIEW ActiveX/COM 接口读取 VI.Description。
-6. Worker 将结果以 Base64 编码写入临时响应文件，Python 解码后输出。
+5. 调用持久会话宿主（workers/labview_session_host.vbs），
+   通过 LabVIEW ActiveX/COM 接口读取 VI.Description（通过 read-props 协议）。
+6. 会话宿主将结果以 key=value 行格式输出到 stdout，Python 解析后输出。
 
 仅支持 Windows 平台。
 """
@@ -28,9 +28,7 @@ import base64
 import os
 import re
 import struct
-import subprocess
 import sys
-import tempfile
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -39,6 +37,11 @@ try:
 except ImportError:  # 非 Windows 平台
     winreg = None  # type: ignore[assignment]
 
+from read_vi_props import (  # type: ignore
+    _encode_b64_utf8,
+    _parse_props_response_text,
+    _run_session_host_request,
+)
 
 # ---------------------------------------------------------------------------
 # 类型别名
@@ -56,7 +59,7 @@ _DEFAULT_WORKER_TIMEOUT_SECONDS = 45
 _PE_MACHINE_I386 = 0x014C
 _PE_MACHINE_AMD64 = 0x8664
 
-_WORKER_SCRIPT = os.path.join(os.path.dirname(__file__), "read_vi_description_worker.vbs")
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 # ---------------------------------------------------------------------------
@@ -516,53 +519,18 @@ def _run_worker(
     report.host_architecture = host_architecture
     report.host_executable = host_executable
 
-    if not os.path.isfile(_WORKER_SCRIPT):
-        raise RuntimeError(f"缺少 COM worker 脚本: {_WORKER_SCRIPT}")
-
-    response_handle = tempfile.NamedTemporaryFile(
-        prefix="labview-vi-desc-",
-        suffix=".out",
-        delete=False,
-    )
-    response_path = response_handle.name
-    response_handle.close()
-
-    command = [
-        host_executable,
-        "//Nologo",
-        _WORKER_SCRIPT,
-        f"/viPath:{abs_vi_path}",
-        f"/responsePath:{response_path}",
-        f"/timeoutSeconds:{_DEFAULT_WORKER_TIMEOUT_SECONDS}",
+    request_lines = [
+        "command=read-props",
+        f"timeoutSeconds={_DEFAULT_WORKER_TIMEOUT_SECONDS}",
+        f"viPath_b64={_encode_b64_utf8(abs_vi_path)}",
     ]
-    if installation is not None:
-        command.extend([
-            f"/targetExe:{installation.exe_path}",
-            f"/expectedDirectory:{installation.install_dir}",
-            f"/expectedVersion:{installation.major}.{installation.minor}",
-        ])
-
-    try:
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=_DEFAULT_WORKER_TIMEOUT_SECONDS + 10,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            f"COM worker 超时，{host_architecture} 宿主未在规定时间内完成。"
-        ) from exc
-
-    try:
-        result = _parse_worker_response(response_path, completed.stderr)
-    finally:
-        try:
-            os.remove(response_path)
-        except OSError:
-            pass
+    returncode, response_text, _stdout, stderr = _run_session_host_request(
+        installation,
+        host_executable,
+        request_lines,
+        _DEFAULT_WORKER_TIMEOUT_SECONDS,
+    )
+    result = _parse_props_response_text(response_text)
 
     # 更新诊断报告
     report.selection = result.get("selection") or report.selection
@@ -573,12 +541,16 @@ def _run_worker(
     if isinstance(attempts, int):
         report.attempts = attempts
 
-    if completed.returncode != 0 or not result.get("ok", False):
+    if returncode != 0 or not result.get("ok", False):
         raise RuntimeError(
-            str(result.get("reason") or completed.stderr.strip() or "COM worker 执行失败。")
+            str(result.get("reason") or stderr.strip() or "会话宿主执行失败。")
         )
 
-    return str(result.get("value", ""))
+    props = result.get("props") or {}
+    entry = props.get("Description") or {}
+    if entry.get("ok"):
+        return str(entry.get("value") or "")
+    return ""
 
 
 def _invoke_read_description(

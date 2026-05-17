@@ -21,6 +21,7 @@ import { ViEditorSession } from './viEditorSession';
 
 interface ViEditorProviderHooks {
   onActiveDocumentChanged?(uri: vscode.Uri | undefined): void;
+  onActiveWebviewChanged?(webview: vscode.Webview | null): void;
 }
 
 /**
@@ -100,6 +101,7 @@ export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViD
       this.getRuntimeOptions(),
       () => this.currentViewMode,
       async (viewMode) => this.updateConfiguredViewMode(viewMode),
+      { vscode },
     );
     this.sessions.add(session);
 
@@ -109,17 +111,22 @@ export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViD
 
     if (webviewPanel.active) {
       this.hooks.onActiveDocumentChanged?.(document.uri);
+      this.hooks.onActiveWebviewChanged?.(webviewPanel.webview);
     }
 
     webviewPanel.onDidChangeViewState((event) => {
       if (event.webviewPanel.active) {
         this.hooks.onActiveDocumentChanged?.(document.uri);
+        this.hooks.onActiveWebviewChanged?.(webviewPanel.webview);
+      } else {
+        this.hooks.onActiveWebviewChanged?.(null);
       }
     });
 
     webviewPanel.onDidDispose(() => {
       this.sessions.delete(session);
       session.dispose();
+      this.hooks.onActiveWebviewChanged?.(null);
     });
 
     await session.initialize();

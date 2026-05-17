@@ -52,6 +52,48 @@
         "command": "labview-vi-support.configureLabVIEWVersion",
         "title": "%commands.configureLabVIEWVersion%",
         "category": "%commands.category%"
+      },
+      {
+        "command": "labview-vi-support.refreshEditor",
+        "title": "%commands.refreshEditor%",
+        "category": "%commands.category%"
+      },
+      {
+        "command": "labview-vi-support.saveEditor",
+        "title": "%commands.saveEditor%",
+        "category": "%commands.category%"
+      },
+      {
+        "command": "labview-vi-support.toggleFP",
+        "title": "%commands.toggleFP%",
+        "category": "%commands.category%"
+      },
+      {
+        "command": "labview-vi-support.toggleBD",
+        "title": "%commands.toggleBD%",
+        "category": "%commands.category%"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "labview-vi-support.refreshEditor",
+        "key": "ctrl+r",
+        "when": "viEditorActive"
+      },
+      {
+        "command": "labview-vi-support.saveEditor",
+        "key": "ctrl+s",
+        "when": "viEditorActive"
+      },
+      {
+        "command": "labview-vi-support.toggleFP",
+        "key": "ctrl+shift+f",
+        "when": "viEditorActive"
+      },
+      {
+        "command": "labview-vi-support.toggleBD",
+        "key": "ctrl+shift+b",
+        "when": "viEditorActive"
       }
     ],
     "customEditors": [
@@ -102,11 +144,12 @@
   "scripts": {
     "vscode:prepublish": "npm run generate-icon && npm run package",
     "generate-icon": "node scripts/generate-icon.js",
-    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "compile": "node scripts/build-webview.js && npm run check-types && npm run lint && node esbuild.js",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "node node_modules/typescript/bin/tsc --noEmit --watch --project tsconfig.json",
-    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "watch:webview": "node --watch --watch-path=media/webview/src --watch-path=scripts/build-webview.js scripts/build-webview.js",
+    "package": "node scripts/build-webview.js && npm run check-types && npm run lint && node esbuild.js --production",
     "package:vsix": "npx @vscode/vsce@3.9.1 package --skip-license --no-dependencies",
     "install:vsix": "node scripts/install-vsix.js",
     "load:local": "npm run package:vsix && npm run install:vsix",

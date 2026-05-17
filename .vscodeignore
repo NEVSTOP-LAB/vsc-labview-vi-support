@@ -11,6 +11,7 @@ eslint.config.mjs
 tsconfig.json
 .vscode-test.mjs
 prototype/**
+media/webview/src/**
 **/__pycache__/**
 **/*.pyc
 out/**

@@ -56,6 +56,21 @@ html, body {
   font: inherit;
 }
 
+.tb-input {
+  min-width: 180px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 3px;
+  padding: 4px 8px;
+  font: inherit;
+}
+
+.tb-field-search {
+  flex: 1 1 220px;
+  max-width: 360px;
+}
+
 .tb-btn {
   background: var(--vscode-button-secondaryBackground, #3a3d41);
   color: var(--vscode-button-secondaryForeground, #fff);
@@ -134,6 +149,10 @@ html, body {
   overflow: hidden;
 }
 
+.main.main-horizontal {
+  flex-direction: row;
+}
+
 .image-area {
   flex: 1 1 60%;
   display: flex;
@@ -157,6 +176,10 @@ html, body {
   background: var(--vscode-editorWidget-background, transparent);
 }
 
+.main.main-horizontal .main-splitter {
+  cursor: col-resize;
+}
+
 .main-splitter::before {
   content: '';
   width: 56px;
@@ -164,6 +187,11 @@ html, body {
   border-radius: 999px;
   background: var(--vscode-panel-border, #444);
   opacity: 0.85;
+}
+
+.main.main-horizontal .main-splitter::before {
+  width: 2px;
+  height: 56px;
 }
 
 .image-pane {
@@ -576,4 +604,8 @@ body.splitter-dragging * {
 
 .props-table .write-error td:nth-child(4) {
   outline: 1px solid var(--vscode-inputValidation-errorBorder, #f48771);
+}
+
+.props-table tr.filtered-out {
+  display: none;
 }

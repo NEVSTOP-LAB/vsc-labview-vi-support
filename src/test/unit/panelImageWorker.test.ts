@@ -15,7 +15,7 @@ function getFunctionBody(scriptText: string, functionName: string): string {
 }
 
 suite('panel image workers', () => {
-  for (const fileName of ['labview_session_host.vbs', 'save_vi_panel_image_worker.vbs']) {
+  for (const fileName of ['labview_session_host.vbs']) {
     test(`${fileName} falls back to GetPanelImage when HTML export misses fp image`, () => {
       const body = getFunctionBody(readWorkerScript(fileName), 'TrySaveFrontPanelImage');
 
