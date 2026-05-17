@@ -149,6 +149,10 @@ html, body {
   overflow: hidden;
 }
 
+.main.main-horizontal {
+  flex-direction: row;
+}
+
 .image-area {
   flex: 1 1 60%;
   display: flex;
@@ -172,6 +176,10 @@ html, body {
   background: var(--vscode-editorWidget-background, transparent);
 }
 
+.main.main-horizontal .main-splitter {
+  cursor: col-resize;
+}
+
 .main-splitter::before {
   content: '';
   width: 56px;
@@ -179,6 +187,11 @@ html, body {
   border-radius: 999px;
   background: var(--vscode-panel-border, #444);
   opacity: 0.85;
+}
+
+.main.main-horizontal .main-splitter::before {
+  width: 2px;
+  height: 56px;
 }
 
 .image-pane {

@@ -39,6 +39,7 @@
   const DEFAULT_SPLIT_RATIO = 0.6;
   const MIN_SPLIT_PANE_PX = 120;
   let splitRatio = DEFAULT_SPLIT_RATIO;
+  let mainLayout = 'vertical'; // 'vertical' | 'horizontal'
 
   // Enum metadata for known number-typed properties (mirrors read_vi_props.py).
   const NUMBER_ENUMS = {
@@ -110,6 +111,7 @@
   const btnBoth   = $('#btn-both');
   const btnLoadDynamic = $('#btn-load-dynamic');
   const btnSave   = $('#btn-save');
+  const btnLayout = $('#btn-layout');
   const btnReload = $('#btn-reload');
   const propsSearch = $('#props-search');
   const statusEl  = $('#status');
@@ -275,9 +277,9 @@
     positionSourceTooltip(target);
   }
 
-  function clampImageAreaHeight(totalHeight, desiredHeight) {
-    const minPanePx = Math.min(MIN_SPLIT_PANE_PX, Math.floor(totalHeight / 2));
-    return Math.max(minPanePx, Math.min(totalHeight - minPanePx, desiredHeight));
+  function clampSplitSize(totalSize, desiredSize) {
+    const minPanePx = Math.min(MIN_SPLIT_PANE_PX, Math.floor(totalSize / 2));
+    return Math.max(minPanePx, Math.min(totalSize - minPanePx, desiredSize));
   }
 
   function parsePixelSize(value) {
@@ -349,10 +351,14 @@
     const previewVisible = isPreviewVisible();
     const tableVisible = isTableVisible();
     const bothVisible = previewVisible && tableVisible;
+    const horizontalSplit = bothVisible && mainLayout === 'horizontal';
 
     imageArea.classList.toggle('hidden', !previewVisible);
     tableArea.classList.toggle('hidden', !tableVisible);
     splitter.classList.toggle('hidden', !bothVisible);
+    main.classList.toggle('main-horizontal', horizontalSplit);
+    splitter.setAttribute('aria-orientation', horizontalSplit ? 'vertical' : 'horizontal');
+    splitter.setAttribute('aria-label', horizontalSplit ? '调整预览区域和属性表的宽度' : '调整预览区域和属性表的高度');
 
     if (!previewVisible) {
       imageArea.style.flex = '';
@@ -368,34 +374,41 @@
       return;
     }
 
-    const splitterHeight = splitter.getBoundingClientRect().height || 10;
-    const availableHeight = main.clientHeight - splitterHeight;
-    if (availableHeight <= 0) {
+    const splitterSize = horizontalSplit
+      ? (splitter.getBoundingClientRect().width || 10)
+      : (splitter.getBoundingClientRect().height || 10);
+    const availableSize = (horizontalSplit ? main.clientWidth : main.clientHeight) - splitterSize;
+    if (availableSize <= 0) {
       imageArea.style.flex = '1 1 60%';
       tableArea.style.flex = '1 1 40%';
       applyPreviewPaneLayout();
       return;
     }
 
-    const imageHeight = clampImageAreaHeight(
-      availableHeight,
-      Math.round(availableHeight * splitRatio),
+    const imageSize = clampSplitSize(
+      availableSize,
+      Math.round(availableSize * splitRatio),
     );
-    const tableHeight = Math.max(0, availableHeight - imageHeight);
-    splitRatio = imageHeight / availableHeight;
-    imageArea.style.flex = `0 0 ${imageHeight}px`;
-    tableArea.style.flex = `0 0 ${tableHeight}px`;
+    const tableSize = Math.max(0, availableSize - imageSize);
+    splitRatio = imageSize / availableSize;
+    imageArea.style.flex = `0 0 ${imageSize}px`;
+    tableArea.style.flex = `0 0 ${tableSize}px`;
     applyPreviewPaneLayout();
   }
 
-  function updateSplitRatioFromClientY(clientY) {
-    const splitterHeight = splitter.getBoundingClientRect().height || 10;
-    const availableHeight = main.clientHeight - splitterHeight;
-    if (availableHeight <= 0) { return; }
+  function updateSplitRatioFromPointer(clientX, clientY) {
+    const horizontalSplit = isPreviewVisible() && isTableVisible() && mainLayout === 'horizontal';
+    const splitterSize = horizontalSplit
+      ? (splitter.getBoundingClientRect().width || 10)
+      : (splitter.getBoundingClientRect().height || 10);
+    const availableSize = (horizontalSplit ? main.clientWidth : main.clientHeight) - splitterSize;
+    if (availableSize <= 0) { return; }
     const mainRect = main.getBoundingClientRect();
-    const rawImageHeight = clientY - mainRect.top - splitterHeight / 2;
-    const imageHeight = clampImageAreaHeight(availableHeight, rawImageHeight);
-    splitRatio = imageHeight / availableHeight;
+    const rawImageSize = horizontalSplit
+      ? (clientX - mainRect.left - splitterSize / 2)
+      : (clientY - mainRect.top - splitterSize / 2);
+    const imageSize = clampSplitSize(availableSize, rawImageSize);
+    splitRatio = imageSize / availableSize;
     applyMainLayout();
   }
 
@@ -668,10 +681,10 @@
     const pointerId = event.pointerId;
     document.body.classList.add('splitter-dragging');
     splitter.setPointerCapture(pointerId);
-    updateSplitRatioFromClientY(event.clientY);
+    updateSplitRatioFromPointer(event.clientX, event.clientY);
 
     const onPointerMove = (moveEvent) => {
-      updateSplitRatioFromClientY(moveEvent.clientY);
+      updateSplitRatioFromPointer(moveEvent.clientX, moveEvent.clientY);
     };
 
     const stopDragging = () => {
@@ -721,6 +734,15 @@
     const tableVisible = isTableVisible();
     previewControls.classList.toggle('hidden', !previewVisible);
     tableControls.classList.toggle('hidden', !tableVisible && !hasDirtyChanges());
+    if (btnLayout) {
+      const bothVisible = previewVisible && tableVisible;
+      btnLayout.classList.toggle('hidden', !bothVisible);
+      const horizontal = mainLayout === 'horizontal';
+      btnLayout.textContent = horizontal ? '上下布局' : '左右布局';
+      btnLayout.title = horizontal
+        ? '切换为上下布局（预览在上，属性表在下）'
+        : '切换为左右布局（预览在左，属性表在右）';
+    }
     updateDynamicUi();
   }
 
@@ -807,6 +829,13 @@
   btnFp.addEventListener('click',   () => setPreviewMode('fp'));
   btnBd.addEventListener('click',   () => setPreviewMode('bd'));
   btnBoth.addEventListener('click', () => setPreviewMode('both'));
+  if (btnLayout) {
+    btnLayout.addEventListener('click', () => {
+      mainLayout = mainLayout === 'horizontal' ? 'vertical' : 'horizontal';
+      updateToolbarVisibility();
+      refreshLayout();
+    });
+  }
 
   document.querySelectorAll('.pane-zoom-btn').forEach((button) => {
     button.addEventListener('click', () => {
