@@ -30,16 +30,14 @@
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onCustomEditor:labview-vi-support.viEditor",
+    "onCommand:labview-vi-support.openCacheDirectory",
+    "onCommand:labview-vi-support.clearCache",
+    "onCommand:labview-vi-support.configureLabVIEWVersion"
   ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
-      {
-        "command": "labview-vi-support.helloWorld",
-        "title": "%commands.helloWorld%",
-        "category": "%commands.category%"
-      },
       {
         "command": "labview-vi-support.openCacheDirectory",
         "title": "%commands.openCacheDirectory%",

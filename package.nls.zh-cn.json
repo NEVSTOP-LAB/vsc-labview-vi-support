@@ -1,6 +1,5 @@
 {
   "commands.category": "LabVIEW VI",
-  "commands.helloWorld": "你好，世界",
   "commands.openCacheDirectory": "打开缓存目录",
   "commands.clearCache": "清理缓存",
   "commands.configureLabVIEWVersion": "配置 LabVIEW 版本",
