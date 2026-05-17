@@ -21,6 +21,7 @@
 | [.doc/README.md](.doc/README.md) | 完整使用说明（安装、功能、配置、常见问题） |
 | [.doc/CONTRIBUTING.md](.doc/CONTRIBUTING.md) | 开发者贡献指南（搭建环境、代码规范、测试、发布） |
 | [.doc/architecture.md](.doc/architecture.md) | 架构说明（模块设计、数据流、缓存机制） |
+| [.doc/vi-server-backup-plan.html](.doc/vi-server-backup-plan.html) | “VI Server 替代 COM”调研结论与备份实施建议 |
 | [.doc/CHANGELOG.md](.doc/CHANGELOG.md) | 文档变更记录 |
 
 ## 快速开始

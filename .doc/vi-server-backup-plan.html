@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VI Server 替代 COM 的备份方案与风险评估</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f1ea;
+      --panel: #fffdf8;
+      --text: #22201b;
+      --muted: #6e665b;
+      --line: #d8cfc1;
+      --accent: #8f4e1d;
+      --warn-bg: #fff1df;
+      --warn-line: #e1b47a;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+      background: linear-gradient(180deg, #efe7da 0%, var(--bg) 100%);
+      color: var(--text);
+    }
+
+    main {
+      width: min(960px, calc(100vw - 32px));
+      margin: 32px auto;
+      padding: 28px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 18px 48px rgba(74, 51, 31, 0.08);
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0 0 16px;
+      line-height: 1.25;
+    }
+
+    h1 {
+      font-size: 32px;
+    }
+
+    h2 {
+      margin-top: 30px;
+      font-size: 22px;
+      color: var(--accent);
+    }
+
+    h3 {
+      margin-top: 18px;
+      font-size: 18px;
+    }
+
+    p {
+      margin: 0 0 14px;
+      color: var(--muted);
+      line-height: 1.75;
+    }
+
+    ul,
+    ol {
+      margin: 0;
+      padding-left: 22px;
+      line-height: 1.8;
+    }
+
+    li + li {
+      margin-top: 6px;
+    }
+
+    code {
+      padding: 0.1em 0.35em;
+      border-radius: 6px;
+      background: #f1e5d6;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.95em;
+      color: #5c2f0f;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+      line-height: 1.7;
+    }
+
+    th {
+      background: #f7efe4;
+    }
+
+    section + section {
+      border-top: 1px solid var(--line);
+      padding-top: 24px;
+    }
+
+    .note {
+      margin: 18px 0;
+      padding: 14px 16px;
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-line);
+      border-radius: 12px;
+    }
+
+    .meta {
+      font-size: 14px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>VI Server 替代 COM 的备份方案与风险评估</h1>
+    <p class="meta">记录日期：2026-05-17</p>
+    <p>本文档用于保存“如果未来需要以另一条 VI Server 接入路径替代当前本地 COM/ActiveX 方案”的调研结论、风险分级与备份实施建议，供后续架构讨论、客户环境适配和应急决策时查阅。</p>
+
+    <section>
+      <h2>一、先澄清概念</h2>
+      <p>当前仓库并不是“COM 方案”和“VI Server 方案”完全分离的两套实现。现有正式运行时本质上已经是在通过 <code>Windows Script Host + LabVIEW COM/ActiveX</code> 访问 LabVIEW 暴露出来的 VI Server 对象模型。</p>
+      <ul>
+        <li>当前 worker 直接调用了 <code>GetVIReference</code>、<code>SaveInstrument</code>、<code>PrintVIToHTML</code> 等 VI Server 风格接口。</li>
+        <li>现有架构还围绕这条链路补上了版本解析、目标实例匹配、持久 session host、全局串行化和缓存复用。</li>
+        <li>因此，若只是把“COM”改称“VI Server”，这不是技术替换。</li>
+      </ul>
+      <div class="note">
+        <strong>本次调研真正评估的对象：</strong>
+        <p>如果未来要从“本地 COM/ActiveX 暴露的 VI Server 自动化”切到“另一条 VI Server 接入方式”，尤其是网络/端口型 VI Server，那么会带来哪些实施风险，以及如何把它作为备份方案而不是立即替换主路径。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>二、当前主方案承担了哪些职责</h2>
+      <p>当前方案不是单次脚本调用，而是一整层运行时能力组合。若未来替换，需要保证下面这些职责都能等价覆盖：</p>
+      <table>
+        <thead>
+          <tr>
+            <th>能力</th>
+            <th>当前实现承担的工作</th>
+            <th>替换时的影响</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>目标版本选择</td>
+            <td>根据目录标记、lvproj、VI 文件头解析所需 LabVIEW 版本，再从本机安装列表中选最匹配实例。</td>
+            <td>新方案必须继续保证“连接正确版本”，否则会出现错误实例写回。</td>
+          </tr>
+          <tr>
+            <td>实例定位与复用</td>
+            <td>可按 <code>targetExe</code>、安装目录、期望版本复用已有 LabVIEW 实例，避免误连。</td>
+            <td>若改网络 VI Server，需要重新定义如何锁定目标实例与连接地址。</td>
+          </tr>
+          <tr>
+            <td>全局串行化</td>
+            <td>通过自动化门卫保证任意时刻只发出一个自动化请求，降低 LabVIEW 冲突和崩溃风险。</td>
+            <td>新方案同样需要并发控制，不能假设网络接口天然安全。</td>
+          </tr>
+          <tr>
+            <td>功能覆盖</td>
+            <td>当前已支持属性读取、属性写回并保存、预览导出。</td>
+            <td>必须重新验证三条链路是否都能稳定工作，而不是只验证读取。</td>
+          </tr>
+          <tr>
+            <td>客户部署前提</td>
+            <td>当前只要求 Windows、本机安装 LabVIEW、WSH 与 COM 注册正常。</td>
+            <td>新方案若依赖网络 VI Server，通常要新增端口、防火墙、访问列表等配置要求。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>三、风险结论</h2>
+      <h3>结论摘要</h3>
+      <p>若未来只是更换本地封装层，但仍走本地 COM/ActiveX 暴露的 VI Server 对象模型，风险属于中等；若要改成网络/端口型 VI Server，则属于高风险运行时重构，不适合作为立即替换当前主路径的方案。</p>
+
+      <h3>高风险点</h3>
+      <ul>
+        <li><strong>概念与边界风险：</strong>这不是局部 API 替换，而是运行时边界变更，会影响脚本宿主、实例定位、错误恢复与客户环境前提。</li>
+        <li><strong>版本绑定风险：</strong>当前实现可以精确选择本机匹配的 LabVIEW 安装；网络 VI Server 需要重新定义“连哪一台、哪一个版本、哪一个实例”。</li>
+        <li><strong>会话管理风险：</strong>现有 session host 支持复用与重建；网络连接还要额外处理断线、重连、端口不可达和会话漂移。</li>
+        <li><strong>功能等价风险：</strong>读取属性相对容易，但保存和预览导出依赖更强的本地实例语义，不能默认等价。</li>
+        <li><strong>运维与客户环境风险：</strong>网络 VI Server 往往意味着额外的防火墙、端口、白名单和安全审计要求，交付成本明显升高。</li>
+        <li><strong>安全面扩张风险：</strong>当前主要是本机自动化；切到网络接口后，控制面从本地进程扩展到网络暴露面。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>四、风险分级</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>替换目标</th>
+            <th>风险等级</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>仅重封装本地 VI Server 调用方式</td>
+            <td>中</td>
+            <td>可能仍能复用现有版本解析、实例匹配和串行化模型，但要做完整回归验证。</td>
+          </tr>
+          <tr>
+            <td>改成网络/端口型 VI Server</td>
+            <td>高</td>
+            <td>需要重做连接模型、环境前提、故障恢复和安全策略，已经接近“新后端”而非“替换 COM”。</td>
+          </tr>
+          <tr>
+            <td>直接替换当前主路径</td>
+            <td>高</td>
+            <td>会同时触及属性读写、预览导出、会话复用与 UI 降级逻辑，不建议直接切换。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>五、备份方案建议</h2>
+      <p>更合理的做法不是“立刻用 VI Server 方案替换 COM 方案”，而是把它设计成一个受控的备份后端，只在明确的触发条件下试点。</p>
+
+      <h3>建议的总体策略</h3>
+      <ol>
+        <li>继续保留当前 <code>TypeScript + WSH + LabVIEW COM/ActiveX</code> 主路径，不动默认行为。</li>
+        <li>把候选 VI Server 新方案做成实验后端，仅挂在 runtime 内部，不修改编辑器层公开接口。</li>
+        <li>通过显式配置或实验开关启用，禁止在未验证环境中自动切换。</li>
+        <li>任何时候只要新后端出现版本不确定、连接失败、导出不稳定等问题，都立即回退到当前主路径。</li>
+      </ol>
+
+      <h3>建议的接入边界</h3>
+      <p>若要实现备份方案，优先保持以下公开能力签名不变，只替换内部后端：</p>
+      <ul>
+        <li><code>readViProps</code></li>
+        <li><code>writeViProps</code></li>
+        <li><code>exportViPanelImages</code></li>
+        <li><code>hasReusableLabVIEWConnection</code></li>
+      </ul>
+      <p>这样可以把影响限制在 runtime 层，避免同时改动编辑器会话、缓存协议和 WebView 消息流。</p>
+    </section>
+
+    <section>
+      <h2>六、触发备份方案的条件</h2>
+      <p>只有在下面场景成立时，才建议继续推进替代方案验证：</p>
+      <ul>
+        <li>客户环境明确限制当前 WSH/COM 自动化链路，且短期无法放行。</li>
+        <li>存在跨机器控制 LabVIEW 的真实需求，本地 COM 已无法满足。</li>
+        <li>可接受为客户环境新增网络端口、防火墙与 VI Server 安全配置。</li>
+        <li>项目可承受一轮完整的功能等价验证，而不是只做读取能力验证。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>七、最小可行验证范围</h2>
+      <p>如果未来要真正评估备份方案，建议只做最小 spike，不要直接改主实现：</p>
+      <ol>
+        <li>验证是否能稳定连接指定目标版本的 LabVIEW 实例。</li>
+        <li>验证 <code>GetVIReference</code> 等价能力。</li>
+        <li>验证属性写回后能否安全保存。</li>
+        <li>验证 <code>PrintVIToHTML</code> 或等价预览导出能力是否稳定。</li>
+        <li>验证断线、超时、版本不匹配时能否明确失败并回退，而不是误写入。</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>八、最终建议</h2>
+      <p>当前项目最稳妥的决策是：</p>
+      <ul>
+        <li>把“网络/端口型 VI Server 替代本地 COM”视为<strong>备份研究方向</strong>，而不是当前交付主线。</li>
+        <li>继续维护现有本地 COM/ActiveX 主方案，因为它已经和版本解析、实例匹配、会话复用、串行化和缓存逻辑深度耦合。</li>
+        <li>若未来必须推进，只能以“实验后端 + 功能开关 + 明确回退路径”的形式逐步验证，不能一次性切主。</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>
