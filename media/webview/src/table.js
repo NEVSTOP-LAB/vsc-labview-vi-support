@@ -533,6 +533,21 @@
     return out;
   }
 
+  let lastSaveAvailable = false;
+
+  function getSaveAvailability() {
+    return hasDirtyChanges() && !savePending;
+  }
+
+  function updateSaveAvailability() {
+    const saveAvailable = getSaveAvailability();
+    btnSave.classList.toggle('hidden', !saveAvailable);
+    if (lastSaveAvailable !== saveAvailable) {
+      lastSaveAvailable = saveAvailable;
+      vscode.postMessage({ type: 'setSaveAvailable', available: saveAvailable });
+    }
+  }
+
   function serializeForType(type, raw) {
     if (type === 'Boolean') {
       return raw === 'True' || raw === 'true' || raw === '1';
@@ -545,6 +560,8 @@
   }
 
   function updateSaveButton() {
-    btnSave.disabled = !hasDirtyChanges();
+    const saveAvailable = getSaveAvailability();
+    btnSave.disabled = !saveAvailable;
+    updateSaveAvailability();
     updateToolbarVisibility();
   }

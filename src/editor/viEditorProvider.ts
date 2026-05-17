@@ -15,6 +15,7 @@ import {
   preferWorkspaceConfigurationTarget,
   type ViewMode,
 } from './viewMode';
+import { ActiveEditorAvailabilityTracker } from './activeEditorAvailabilityTracker';
 import { buildLoadingProps } from '../scripts/propMetadata';
 import { renderInitialPropsTableRows } from './viWebviewHtml';
 import { ViEditorSession } from './viEditorSession';
@@ -22,6 +23,16 @@ import { ViEditorSession } from './viEditorSession';
 interface ViEditorProviderHooks {
   onActiveDocumentChanged?(uri: vscode.Uri | undefined): void;
   onActiveWebviewChanged?(webview: vscode.Webview | null): void;
+  onActiveSaveAvailabilityChanged?(available: boolean): void;
+}
+
+function isSaveAvailabilityMessage(message: unknown): message is { type: 'setSaveAvailable'; available: boolean } {
+  if (typeof message !== 'object' || message === null) {
+    return false;
+  }
+
+  const payload = message as Record<string, unknown>;
+  return payload['type'] === 'setSaveAvailable' && typeof payload['available'] === 'boolean';
 }
 
 /**
@@ -37,7 +48,9 @@ export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViD
   public static readonly viewType = 'labview-vi-support.viEditor';
 
   private readonly sessions = new Set<ViEditorSession>();
+  private readonly saveAvailability = new ActiveEditorAvailabilityTracker<vscode.WebviewPanel>();
   private currentViewMode: ViewMode;
+  private activePanel: vscode.WebviewPanel | null = null;
 
   public static cacheRoot(context: vscode.ExtensionContext): string {
     return getCacheRoot(context.globalStorageUri.fsPath);
@@ -104,32 +117,51 @@ export class ViEditorProvider implements vscode.CustomReadonlyEditorProvider<ViD
       { vscode },
     );
     this.sessions.add(session);
+    this.saveAvailability.setAvailable(webviewPanel, false);
 
     webviewPanel.webview.onDidReceiveMessage((msg) => {
+      if (isSaveAvailabilityMessage(msg)) {
+        const snapshot = this.saveAvailability.setAvailable(webviewPanel, msg.available);
+        if (this.activePanel === webviewPanel) {
+          this.hooks.onActiveSaveAvailabilityChanged?.(snapshot.available);
+        }
+        return;
+      }
+
       void session.handleMessage(msg);
     });
 
     if (webviewPanel.active) {
-      this.hooks.onActiveDocumentChanged?.(document.uri);
-      this.hooks.onActiveWebviewChanged?.(webviewPanel.webview);
+      this.setActivePanel(webviewPanel, document.uri);
     }
 
     webviewPanel.onDidChangeViewState((event) => {
       if (event.webviewPanel.active) {
-        this.hooks.onActiveDocumentChanged?.(document.uri);
-        this.hooks.onActiveWebviewChanged?.(webviewPanel.webview);
-      } else {
-        this.hooks.onActiveWebviewChanged?.(null);
+        this.setActivePanel(webviewPanel, document.uri);
+      } else if (this.activePanel === webviewPanel) {
+        this.setActivePanel(null, undefined);
       }
     });
 
     webviewPanel.onDidDispose(() => {
       this.sessions.delete(session);
       session.dispose();
-      this.hooks.onActiveWebviewChanged?.(null);
+      const wasActive = this.activePanel === webviewPanel;
+      this.saveAvailability.delete(webviewPanel);
+      if (wasActive) {
+        this.setActivePanel(null, undefined);
+      }
     });
 
     await session.initialize();
+  }
+
+  private setActivePanel(panel: vscode.WebviewPanel | null, uri: vscode.Uri | undefined): void {
+    this.activePanel = panel;
+    const snapshot = this.saveAvailability.setActive(panel);
+    this.hooks.onActiveDocumentChanged?.(uri);
+    this.hooks.onActiveWebviewChanged?.(panel ? panel.webview : null);
+    this.hooks.onActiveSaveAvailabilityChanged?.(snapshot.available);
   }
 
   private getRuntimeOptions(): LabVIEWRuntimeOptions {

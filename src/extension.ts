@@ -10,14 +10,34 @@ import { LabVIEWVersionStatusController } from './labviewVersionStatus';
 import { disposeLabVIEWSessions } from './scripts/labviewRuntime';
 
 let activeViWebview: vscode.Webview | null = null;
+let activeViSaveAvailable = false;
+
+function updateViEditorContexts(): void {
+  const viEditorActive = !!activeViWebview;
+  void vscode.commands.executeCommand('setContext', 'viEditorActive', viEditorActive);
+  void vscode.commands.executeCommand(
+    'setContext',
+    'viEditorSaveAvailable',
+    viEditorActive && activeViSaveAvailable,
+  );
+}
 
 function setActiveViWebview(webview: vscode.Webview | null): void {
   activeViWebview = webview;
-  void vscode.commands.executeCommand('setContext', 'viEditorActive', !!webview);
+  if (!webview) {
+    activeViSaveAvailable = false;
+  }
+  updateViEditorContexts();
+}
+
+function setActiveViSaveAvailable(available: boolean): void {
+  activeViSaveAvailable = !!activeViWebview && available;
+  updateViEditorContexts();
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const versionStatus = new LabVIEWVersionStatusController();
+  updateViEditorContexts();
   context.subscriptions.push(versionStatus);
   context.subscriptions.push(registerEditorProvider(context, versionStatus));
   await syncCacheDirectorySetting(context);
@@ -48,6 +68,7 @@ function registerEditorProvider(
   return ViEditorProvider.register(context, {
     onActiveDocumentChanged: (uri) => versionStatus.setActiveResource(uri),
     onActiveWebviewChanged: (webview) => setActiveViWebview(webview),
+    onActiveSaveAvailabilityChanged: (available) => setActiveViSaveAvailable(available),
   });
 }
 

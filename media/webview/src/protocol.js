@@ -29,7 +29,8 @@
       const updates = collectUpdates();
       if (Object.keys(updates).length === 0) { return; }
       clearErrors();
-      btnSave.disabled = true;
+      savePending = true;
+      updateSaveButton();
       vscode.postMessage({ type: 'saveProps', updates });
       return;
     }
@@ -40,6 +41,7 @@
   }
 
   function applyState(state) {
+    savePending = false;
     currentPropsEnvelope = state.props || null;
     currentLoadingState = state.loading || { fp: false, bd: false, props: false };
     if (isKnownViewMode(state.viewMode)) {
@@ -63,10 +65,12 @@
   }
 
   function appendError(message) {
+    savePending = false;
     errorsEl.hidden = false;
     const div = document.createElement('div');
     div.textContent = message;
     errorsEl.appendChild(div);
+    updateSaveButton();
   }
 
   function clearErrors() {

@@ -11,6 +11,7 @@
 //   { type: 'reload' }
 //   { type: 'loadDynamicProps' }
 //   { type: 'setViewMode', viewMode }
+//   { type: 'setSaveAvailable', available }
 //   { type: 'saveProps', updates: { 属性名: 值, ... } }
 
 (function () {
@@ -28,6 +29,7 @@
   let currentPropsEnvelope = null;
   let currentLoadingState = { fp: false, bd: false, props: false };
   let propsFilterText = '';
+  let savePending = false;
   /** @type {Record<'fp'|'bd', { scale: number, fitScale: number, x: number, y: number, naturalW: number, naturalH: number, contentBounds: { left: number, top: number, width: number, height: number } | null }>} */
   const viewState = {
     fp: { scale: 1, fitScale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0, contentBounds: null },
@@ -377,7 +379,8 @@
       const updates = collectUpdates();
       if (Object.keys(updates).length === 0) { return; }
       clearErrors();
-      btnSave.disabled = true;
+      savePending = true;
+      updateSaveButton();
       vscode.postMessage({ type: 'saveProps', updates });
       return;
     }
@@ -388,6 +391,7 @@
   }
 
   function applyState(state) {
+    savePending = false;
     currentPropsEnvelope = state.props || null;
     currentLoadingState = state.loading || { fp: false, bd: false, props: false };
     if (isKnownViewMode(state.viewMode)) {
@@ -411,10 +415,12 @@
   }
 
   function appendError(message) {
+    savePending = false;
     errorsEl.hidden = false;
     const div = document.createElement('div');
     div.textContent = message;
     errorsEl.appendChild(div);
+    updateSaveButton();
   }
 
   function clearErrors() {
@@ -1097,7 +1103,8 @@
     const updates = collectUpdates();
     if (Object.keys(updates).length === 0) { return; }
     clearErrors();
-    btnSave.disabled = true;
+    savePending = true;
+    updateSaveButton();
     vscode.postMessage({ type: 'saveProps', updates });
   });
 
@@ -1643,6 +1650,21 @@
     return out;
   }
 
+  let lastSaveAvailable = false;
+
+  function getSaveAvailability() {
+    return hasDirtyChanges() && !savePending;
+  }
+
+  function updateSaveAvailability() {
+    const saveAvailable = getSaveAvailability();
+    btnSave.classList.toggle('hidden', !saveAvailable);
+    if (lastSaveAvailable !== saveAvailable) {
+      lastSaveAvailable = saveAvailable;
+      vscode.postMessage({ type: 'setSaveAvailable', available: saveAvailable });
+    }
+  }
+
   function serializeForType(type, raw) {
     if (type === 'Boolean') {
       return raw === 'True' || raw === 'true' || raw === '1';
@@ -1655,7 +1677,9 @@
   }
 
   function updateSaveButton() {
-    btnSave.disabled = !hasDirtyChanges();
+    const saveAvailable = getSaveAvailability();
+    btnSave.disabled = !saveAvailable;
+    updateSaveAvailability();
     updateToolbarVisibility();
   }
 
