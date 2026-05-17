@@ -27,6 +27,7 @@
   let previewMode = 'both';      // 'fp' | 'bd' | 'both'
   let currentPropsEnvelope = null;
   let currentLoadingState = { fp: false, bd: false, props: false };
+  let propsFilterText = '';
   /** @type {Record<'fp'|'bd', { scale: number, fitScale: number, x: number, y: number, naturalW: number, naturalH: number }>} */
   const viewState = {
     fp: { scale: 1, fitScale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0 },
@@ -110,6 +111,7 @@
   const btnLoadDynamic = $('#btn-load-dynamic');
   const btnSave   = $('#btn-save');
   const btnReload = $('#btn-reload');
+  const propsSearch = $('#props-search');
   const statusEl  = $('#status');
   const previewControls = $('#preview-controls');
   const tableControls = $('#table-controls');
@@ -196,6 +198,7 @@
     setImage('bd', state.bdImage, state.loading && state.loading.bd);
     if (state.props && state.props.props) {
       renderTable(state.props.props);
+      applyPropsFilter();
     } else if (state.loading && state.loading.props) {
       renderLoadingTable();
     } else {
@@ -841,9 +844,94 @@
     vscode.postMessage({ type: 'saveProps', updates });
   });
 
+  if (propsSearch) {
+    propsSearch.addEventListener('input', () => {
+      propsFilterText = String(propsSearch.value || '');
+      applyPropsFilter();
+    });
+  }
+
   // -------------------------------------------------------------------------
   // Property table
   // -------------------------------------------------------------------------
+  function propMatchesFilter(propName, entry, filter) {
+    if (!filter) {
+      return true;
+    }
+    const haystack = [
+      propName,
+      entry && entry.displayName,
+      entry && entry.description,
+    ]
+      .filter(Boolean)
+      .join('\n')
+      .toLowerCase();
+    return haystack.includes(filter);
+  }
+
+  function applyPropsFilter() {
+    const filter = String(propsFilterText || '').trim().toLowerCase();
+    const props = currentPropsEnvelope && currentPropsEnvelope.props ? currentPropsEnvelope.props : null;
+
+    const existingEmpty = tbody.querySelector('tr.filter-empty-row');
+    if (existingEmpty) {
+      existingEmpty.remove();
+    }
+
+    const allRows = Array.from(tbody.querySelectorAll('tr'));
+    if (!filter || !props) {
+      allRows.forEach((tr) => tr.classList.remove('filtered-out'));
+      return;
+    }
+
+    let anyVisibleProp = false;
+    for (const tr of allRows) {
+      const name = tr.dataset && tr.dataset.prop ? tr.dataset.prop : '';
+      if (!name) {
+        continue;
+      }
+      const entry = props[name] || {};
+      const ok = propMatchesFilter(name, entry, filter);
+      tr.classList.toggle('filtered-out', !ok);
+      if (ok) {
+        anyVisibleProp = true;
+      }
+    }
+
+    const children = Array.from(tbody.children);
+    let currentGroupRow = null;
+    let groupHasVisible = false;
+    for (const row of children) {
+      if (row.classList.contains('group-row')) {
+        if (currentGroupRow) {
+          currentGroupRow.classList.toggle('filtered-out', !groupHasVisible);
+        }
+        currentGroupRow = row;
+        groupHasVisible = false;
+        continue;
+      }
+      const isPropRow = !!(row.dataset && row.dataset.prop);
+      if (isPropRow && !row.classList.contains('filtered-out')) {
+        groupHasVisible = true;
+      }
+    }
+    if (currentGroupRow) {
+      currentGroupRow.classList.toggle('filtered-out', !groupHasVisible);
+    }
+
+    if (!anyVisibleProp) {
+      allRows.forEach((tr) => tr.classList.add('filtered-out'));
+      const tr = document.createElement('tr');
+      tr.className = 'filter-empty-row';
+      const td = document.createElement('td');
+      td.colSpan = 5;
+      td.className = 'empty';
+      td.textContent = '没有匹配的属性。';
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    }
+  }
+
   function collectPropGroups(props) {
     const groups = [];
     const seen = new Map();
@@ -1283,6 +1371,7 @@
       }
     }
     updateSaveButton();
+    applyPropsFilter();
   }
 
   function collectUpdates() {

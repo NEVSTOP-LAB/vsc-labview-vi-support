@@ -56,6 +56,21 @@ html, body {
   font: inherit;
 }
 
+.tb-input {
+  min-width: 180px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 3px;
+  padding: 4px 8px;
+  font: inherit;
+}
+
+.tb-field-search {
+  flex: 1 1 220px;
+  max-width: 360px;
+}
+
 .tb-btn {
   background: var(--vscode-button-secondaryBackground, #3a3d41);
   color: var(--vscode-button-secondaryForeground, #fff);
@@ -576,4 +591,8 @@ body.splitter-dragging * {
 
 .props-table .write-error td:nth-child(4) {
   outline: 1px solid var(--vscode-inputValidation-errorBorder, #f48771);
+}
+
+.props-table tr.filtered-out {
+  display: none;
 }
