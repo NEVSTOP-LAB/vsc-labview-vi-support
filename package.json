@@ -55,7 +55,8 @@
       {
         "command": "labview-vi-support.saveEditor",
         "title": "%commands.saveEditor%",
-        "category": "%commands.category%"
+        "category": "%commands.category%",
+        "enablement": "viEditorActive && viEditorSaveAvailable"
       },
       {
         "command": "labview-vi-support.toggleFP",
@@ -77,7 +78,7 @@
       {
         "command": "labview-vi-support.saveEditor",
         "key": "ctrl+s",
-        "when": "viEditorActive"
+        "when": "viEditorActive && viEditorSaveAvailable"
       },
       {
         "command": "labview-vi-support.toggleFP",
@@ -90,6 +91,14 @@
         "when": "viEditorActive"
       }
     ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "labview-vi-support.saveEditor",
+          "when": "viEditorActive && viEditorSaveAvailable"
+        }
+      ]
+    },
     "customEditors": [
       {
         "viewType": "labview-vi-support.viEditor",

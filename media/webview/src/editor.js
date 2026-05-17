@@ -11,6 +11,7 @@
 //   { type: 'reload' }
 //   { type: 'loadDynamicProps' }
 //   { type: 'setViewMode', viewMode }
+//   { type: 'setSaveAvailable', available }
 //   { type: 'saveProps', updates: { 属性名: 值, ... } }
 
 (function () {
@@ -28,6 +29,7 @@
   let currentPropsEnvelope = null;
   let currentLoadingState = { fp: false, bd: false, props: false };
   let propsFilterText = '';
+  let savePending = false;
   /** @type {Record<'fp'|'bd', { scale: number, fitScale: number, x: number, y: number, naturalW: number, naturalH: number, contentBounds: { left: number, top: number, width: number, height: number } | null }>} */
   const viewState = {
     fp: { scale: 1, fitScale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0, contentBounds: null },
@@ -570,7 +572,8 @@
     const updates = collectUpdates();
     if (Object.keys(updates).length === 0) { return; }
     clearErrors();
-    btnSave.disabled = true;
+    savePending = true;
+    updateSaveButton();
     vscode.postMessage({ type: 'saveProps', updates });
   });
 
