@@ -119,6 +119,7 @@
   const tableControls = $('#table-controls');
   const errorsEl  = $('#errors');
   const main      = $('#main');
+  const propsTable = $('#props-table');
   const tbody     = $('#props-tbody');
   const tableArea = $('#table-area');
   const imageArea = $('#image-area');
@@ -172,6 +173,178 @@
     fp: document.querySelector('[data-zoom-label="fp"]'),
     bd: document.querySelector('[data-zoom-label="bd"]'),
   };
+  const propsTableCols = propsTable ? {
+    name: propsTable.querySelector('col.col-name'),
+    type: propsTable.querySelector('col.col-type'),
+    rw: propsTable.querySelector('col.col-rw'),
+    value: propsTable.querySelector('col.col-value'),
+    desc: propsTable.querySelector('col.col-desc'),
+  } : null;
+  const RESIZABLE_PROP_COLUMNS = ['name', 'type', 'rw', 'value'];
+  const PROP_COLUMN_ORDER = ['name', 'type', 'rw', 'value', 'desc'];
+  const PROP_COLUMN_MIN_WIDTHS = {
+    name: 140,
+    type: 88,
+    rw: 68,
+    value: 180,
+    desc: 180,
+  };
+  const DEFAULT_PROPS_TABLE_MIN_WIDTH = 940;
+  const propsTableColumnWidths = {
+    name: 0,
+    type: 0,
+    rw: 0,
+    value: 0,
+  };
+  let propsTableColumnsInitialized = false;
+  let propsTableColumnsCustomized = false;
+
+  function getPropsTableHeaderCells() {
+    if (!propsTable || !propsTable.tHead || propsTable.tHead.rows.length === 0) {
+      return [];
+    }
+    return Array.from(propsTable.tHead.rows[0].cells);
+  }
+
+  function isPropsTableVisible() {
+    return !!tableArea
+      && !tableArea.classList.contains('hidden')
+      && tableArea.getBoundingClientRect().width > 0;
+  }
+
+  function applyPropsTableColumnWidths() {
+    if (!propsTable || !propsTableCols) {
+      return;
+    }
+
+    for (const column of RESIZABLE_PROP_COLUMNS) {
+      const col = propsTableCols[column];
+      if (!col) {
+        continue;
+      }
+      col.style.width = Math.round(propsTableColumnWidths[column]) + 'px';
+    }
+
+    if (propsTableCols.desc) {
+      propsTableCols.desc.style.width = '';
+    }
+
+    const requiredMinWidth = RESIZABLE_PROP_COLUMNS.reduce(
+      (sum, column) => sum + Math.max(PROP_COLUMN_MIN_WIDTHS[column], propsTableColumnWidths[column]),
+      0,
+    ) + PROP_COLUMN_MIN_WIDTHS.desc;
+    propsTable.style.minWidth = Math.max(DEFAULT_PROPS_TABLE_MIN_WIDTH, requiredMinWidth) + 'px';
+  }
+
+  function measurePropsTableColumnWidths() {
+    if (!propsTable || !propsTableCols || !isPropsTableVisible()) {
+      return false;
+    }
+
+    const headerCells = getPropsTableHeaderCells();
+    if (headerCells.length < PROP_COLUMN_ORDER.length) {
+      return false;
+    }
+
+    RESIZABLE_PROP_COLUMNS.forEach((column, index) => {
+      propsTableColumnWidths[column] = Math.max(
+        PROP_COLUMN_MIN_WIDTHS[column],
+        Math.round(headerCells[index].getBoundingClientRect().width),
+      );
+    });
+
+    propsTableColumnsInitialized = true;
+    applyPropsTableColumnWidths();
+    return true;
+  }
+
+  function ensurePropsTableColumnWidths() {
+    if (!propsTable || !propsTableCols || !isPropsTableVisible()) {
+      return;
+    }
+
+    if (!propsTableColumnsInitialized || !propsTableColumnsCustomized) {
+      measurePropsTableColumnWidths();
+      return;
+    }
+
+    applyPropsTableColumnWidths();
+  }
+
+  function beginPropsTableColumnResize(event, column) {
+    if (event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!propsTableColumnsInitialized && !measurePropsTableColumnWidths()) {
+      return;
+    }
+
+    const startX = event.clientX;
+    const startWidth = propsTableColumnWidths[column];
+    const handle = event.currentTarget;
+    const pointerId = event.pointerId;
+    propsTableColumnsCustomized = true;
+    document.body.classList.add('column-resizing');
+    if (handle && typeof handle.setPointerCapture === 'function') {
+      handle.setPointerCapture(pointerId);
+    }
+
+    const onPointerMove = (moveEvent) => {
+      const nextWidth = Math.max(
+        PROP_COLUMN_MIN_WIDTHS[column],
+        Math.round(startWidth + (moveEvent.clientX - startX)),
+      );
+      if (nextWidth === propsTableColumnWidths[column]) {
+        return;
+      }
+      propsTableColumnWidths[column] = nextWidth;
+      applyPropsTableColumnWidths();
+    };
+
+    const stopResize = () => {
+      document.body.classList.remove('column-resizing');
+      if (handle && typeof handle.releasePointerCapture === 'function' && handle.hasPointerCapture(pointerId)) {
+        handle.releasePointerCapture(pointerId);
+      }
+      if (handle) {
+        handle.removeEventListener('pointermove', onPointerMove);
+        handle.removeEventListener('pointerup', stopResize);
+        handle.removeEventListener('pointercancel', stopResize);
+      }
+    };
+
+    if (handle) {
+      handle.addEventListener('pointermove', onPointerMove);
+      handle.addEventListener('pointerup', stopResize);
+      handle.addEventListener('pointercancel', stopResize);
+    }
+  }
+
+  function installPropsTableColumnResizers() {
+    const headerCells = getPropsTableHeaderCells();
+    if (headerCells.length < PROP_COLUMN_ORDER.length) {
+      return;
+    }
+
+    RESIZABLE_PROP_COLUMNS.forEach((column, index) => {
+      const th = headerCells[index];
+      if (!th || th.querySelector('.column-resizer')) {
+        return;
+      }
+      th.dataset.columnKey = column;
+      const handle = document.createElement('div');
+      handle.className = 'column-resizer';
+      handle.dataset.columnKey = column;
+      handle.setAttribute('role', 'presentation');
+      handle.addEventListener('pointerdown', (event) => beginPropsTableColumnResize(event, column));
+      th.appendChild(handle);
+    });
+  }
+
+  installPropsTableColumnResizers();
 
   // @include protocol.js
   function hideSourceTooltip(target) {
@@ -252,6 +425,7 @@
       applyMainLayout();
       fitToViewport('fp');
       fitToViewport('bd');
+      ensurePropsTableColumnWidths();
     });
   }
 

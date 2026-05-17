@@ -330,27 +330,33 @@ body.splitter-dragging * {
   user-select: none;
 }
 
+body.column-resizing,
+body.column-resizing * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
 .props-table {
   width: 100%;
-  min-width: 980px;
+  min-width: 940px;
   border-collapse: collapse;
   table-layout: fixed;
 }
 
 .props-table col.col-name {
-  width: 16%;
+  width: 15%;
 }
 
 .props-table col.col-type {
-  width: 14%;
+  width: 96px;
 }
 
 .props-table col.col-rw {
-  width: 78px;
+  width: 72px;
 }
 
 .props-table col.col-value {
-  width: 28%;
+  width: 26%;
 }
 
 .props-table th,
@@ -366,6 +372,40 @@ body.splitter-dragging * {
   top: 0;
   background: var(--vscode-editorWidget-background, #2a2a2a);
   z-index: 1;
+}
+
+.props-table thead th[data-column-key] {
+  padding-right: 14px;
+}
+
+.column-resizer {
+  position: absolute;
+  top: 0;
+  right: -5px;
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+  touch-action: none;
+}
+
+.column-resizer::after {
+  content: '';
+  position: absolute;
+  top: 20%;
+  bottom: 20%;
+  left: 4px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--vscode-panel-border, #444);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.props-table thead th:hover .column-resizer::after,
+.props-table thead th:focus-within .column-resizer::after,
+body.column-resizing .column-resizer::after {
+  opacity: 0.7;
 }
 
 .props-table .group-row td {
