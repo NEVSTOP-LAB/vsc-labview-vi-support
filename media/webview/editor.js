@@ -185,10 +185,36 @@
       if (isKnownViewMode(msg.viewMode)) {
         setViewMode(msg.viewMode, { persist: false });
       }
+    } else if (msg.type === 'command') {
+      handleHostCommand(msg.command);
     } else if (msg.type === 'error') {
       appendError(msg.message);
     }
   });
+
+  function handleHostCommand(command) {
+    if (command === 'reload') {
+      hideSourceTooltip();
+      clearErrors();
+      vscode.postMessage({ type: 'reload' });
+      return;
+    }
+    if (command === 'save') {
+      hideSourceTooltip();
+      const updates = collectUpdates();
+      if (Object.keys(updates).length === 0) { return; }
+      clearErrors();
+      btnSave.disabled = true;
+      vscode.postMessage({ type: 'saveProps', updates });
+      return;
+    }
+    if (command === 'preview-fp' || command === 'preview-bd') {
+      if (viewMode === 'table-only') {
+        setViewMode('preview-only', { persist: true });
+      }
+      setPreviewMode(command === 'preview-fp' ? 'fp' : 'bd');
+    }
+  }
 
   function applyState(state) {
     currentPropsEnvelope = state.props || null;

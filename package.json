@@ -52,6 +52,48 @@
         "command": "labview-vi-support.configureLabVIEWVersion",
         "title": "%commands.configureLabVIEWVersion%",
         "category": "%commands.category%"
+      },
+      {
+        "command": "labview-vi-support.refreshEditor",
+        "title": "%commands.refreshEditor%",
+        "category": "%commands.category%"
+      },
+      {
+        "command": "labview-vi-support.saveEditor",
+        "title": "%commands.saveEditor%",
+        "category": "%commands.category%"
+      },
+      {
+        "command": "labview-vi-support.toggleFP",
+        "title": "%commands.toggleFP%",
+        "category": "%commands.category%"
+      },
+      {
+        "command": "labview-vi-support.toggleBD",
+        "title": "%commands.toggleBD%",
+        "category": "%commands.category%"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "labview-vi-support.refreshEditor",
+        "key": "ctrl+r",
+        "when": "viEditorActive"
+      },
+      {
+        "command": "labview-vi-support.saveEditor",
+        "key": "ctrl+s",
+        "when": "viEditorActive"
+      },
+      {
+        "command": "labview-vi-support.toggleFP",
+        "key": "ctrl+shift+f",
+        "when": "viEditorActive"
+      },
+      {
+        "command": "labview-vi-support.toggleBD",
+        "key": "ctrl+shift+b",
+        "when": "viEditorActive"
       }
     ],
     "customEditors": [
