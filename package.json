@@ -144,11 +144,11 @@
   "scripts": {
     "vscode:prepublish": "npm run generate-icon && npm run package",
     "generate-icon": "node scripts/generate-icon.js",
-    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "compile": "node scripts/build-webview.js && npm run check-types && npm run lint && node esbuild.js",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "node node_modules/typescript/bin/tsc --noEmit --watch --project tsconfig.json",
-    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "package": "node scripts/build-webview.js && npm run check-types && npm run lint && node esbuild.js --production",
     "package:vsix": "npx @vscode/vsce@3.9.1 package --skip-license --no-dependencies",
     "install:vsix": "node scripts/install-vsix.js",
     "load:local": "npm run package:vsix && npm run install:vsix",

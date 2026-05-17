@@ -251,6 +251,7 @@
     errorsEl.hidden = true;
   }
 
+
   function hideSourceTooltip(target) {
     if (target && activeTooltipTarget !== target) {
       return;
@@ -727,6 +728,7 @@
     splitter.addEventListener('pointerup', stopDragging);
     splitter.addEventListener('pointercancel', stopDragging);
   });
+
 
   // -------------------------------------------------------------------------
   // Toolbar
@@ -1456,6 +1458,7 @@
     btnSave.disabled = !hasDirtyChanges();
     updateToolbarVisibility();
   }
+
 
   // -------------------------------------------------------------------------
   // Init
