@@ -160,6 +160,25 @@ export async function exportViPanelImage(
   return outputs[panel] ?? path.resolve(outputPath);
 }
 
+export function isRetryableImageWorkerFailure(
+  response: Pick<ImageWorkerResponse, 'selection' | 'reason'>,
+): boolean {
+  const normalizedSelection = response.selection.trim().toLowerCase();
+  if (normalizedSelection === 'failed-to-match-target-labview-application') {
+    return false;
+  }
+
+  const normalizedReason = response.reason.trim().toLowerCase();
+  if (!normalizedReason) {
+    return true;
+  }
+
+  return !(
+    normalizedReason.includes('does not match the requested target')
+    || normalizedReason.includes('timed out waiting for the requested labview target to register for com reuse')
+  );
+}
+
 export async function exportViPanelImages(
   viPath: string,
   outputPaths: Partial<Record<'fp' | 'bd', string>>,
@@ -186,6 +205,7 @@ export async function exportViPanelImages(
   }
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    let shouldRetry = true;
     try {
       const responseText = await requestLabVIEWSession(
         buildSessionTargetOptions(target, scripts),
@@ -210,8 +230,13 @@ export async function exportViPanelImages(
       }
       const targets = Object.keys(normalizedOutputs).join(',') || 'unknown';
       lastError = new Error(response.reason || `Image export worker failed for panels=${targets}.`);
+      shouldRetry = isRetryableImageWorkerFailure(response);
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+    }
+
+    if (!shouldRetry) {
+      break;
     }
 
     if (attempt < 2) {

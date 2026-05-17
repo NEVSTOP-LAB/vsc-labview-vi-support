@@ -39,7 +39,7 @@
   const DEFAULT_SPLIT_RATIO = 0.6;
   const MIN_SPLIT_PANE_PX = 120;
   let splitRatio = DEFAULT_SPLIT_RATIO;
-  let mainLayout = 'vertical'; // 'vertical' | 'horizontal'
+  let previewLayout = 'horizontal'; // 'horizontal' | 'vertical'
 
   // Enum metadata for known number-typed properties (mirrors read_vi_props.py).
   const NUMBER_ENUMS = {
@@ -261,13 +261,13 @@
     previewControls.classList.toggle('hidden', !previewVisible);
     tableControls.classList.toggle('hidden', !tableVisible && !hasDirtyChanges());
     if (btnLayout) {
-      const bothVisible = previewVisible && tableVisible;
-      btnLayout.classList.toggle('hidden', !bothVisible);
-      const horizontal = mainLayout === 'horizontal';
+      const showPreviewLayoutButton = previewVisible && previewMode === 'both';
+      btnLayout.classList.toggle('hidden', !showPreviewLayoutButton);
+      const horizontal = previewLayout === 'horizontal';
       btnLayout.textContent = horizontal ? '上下布局' : '左右布局';
       btnLayout.title = horizontal
-        ? '切换为上下布局（预览在上，属性表在下）'
-        : '切换为左右布局（预览在左，属性表在右）';
+        ? '切换为上下布局（前面板在上，程序框图在下）'
+        : '切换为左右布局（前面板在左，程序框图在右）';
     }
     updateDynamicUi();
   }
@@ -332,6 +332,7 @@
   function setPreviewMode(mode) {
     previewMode = mode;
     applyPreviewMode();
+    updateToolbarVisibility();
     refreshLayout();
   }
 
@@ -357,7 +358,7 @@
   btnBoth.addEventListener('click', () => setPreviewMode('both'));
   if (btnLayout) {
     btnLayout.addEventListener('click', () => {
-      mainLayout = mainLayout === 'horizontal' ? 'vertical' : 'horizontal';
+      previewLayout = previewLayout === 'horizontal' ? 'vertical' : 'horizontal';
       updateToolbarVisibility();
       refreshLayout();
     });

@@ -327,11 +327,14 @@ Sub EnsureLabVIEWConnected(ByVal timeoutSeconds)
     Dim deadline
     Dim createError
     Dim lastMismatch
+    Dim launchIssued
+    Dim reuseWaitMilliseconds
     Dim appDir
     Dim appVer
 
     createError = ""
     lastMismatch = ""
+    launchIssued = False
 
     If HasReusableSessionApp() Then
         Exit Sub
@@ -345,9 +348,17 @@ Sub EnsureLabVIEWConnected(ByVal timeoutSeconds)
     Do While Now < deadline
         attempts = attempts + 1
 
-        If ShouldActivateTargetInstance(attempts) Then
+        If Not launchIssued And ShouldActivateTargetInstance(attempts) Then
             StartTargetLabVIEW targetExe
-            If WaitForReusableTargetInstance(WAIT_FOR_REUSE_MS, lastMismatch) Then
+            launchIssued = True
+        End If
+
+        If launchIssued Then
+            reuseWaitMilliseconds = WAIT_FOR_REUSE_MS
+            If attempts > 1 Then
+                reuseWaitMilliseconds = RETRY_INTERVAL_MS
+            End If
+            If WaitForReusableTargetInstance(reuseWaitMilliseconds, lastMismatch) Then
                 Exit Sub
             End If
         End If

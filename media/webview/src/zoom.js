@@ -3,67 +3,8 @@
     return Math.max(minPanePx, Math.min(totalSize - minPanePx, desiredSize));
   }
 
-  function parsePixelSize(value) {
-    const parsed = Number.parseFloat(value || '0');
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-
-  function getVisiblePreviewPanes() {
-    return Object.values(panes).filter((pane) => pane && !pane.classList.contains('hidden'));
-  }
-
-  function getPaneHeaderHeight() {
-    return getVisiblePreviewPanes().reduce((maxHeight, pane) => {
-      const header = pane.querySelector('.pane-header');
-      if (!(header instanceof HTMLElement)) {
-        return maxHeight;
-      }
-      return Math.max(maxHeight, header.getBoundingClientRect().height || 0);
-    }, 0);
-  }
-
-  function getSquareDistance(width, height) {
-    if (width <= 0 || height <= 0) {
-      return Number.POSITIVE_INFINITY;
-    }
-    return Math.abs(Math.log(width / height));
-  }
-
-  function choosePreviewLayoutDirection() {
-    const visiblePanes = getVisiblePreviewPanes();
-    if (!isPreviewVisible() || previewMode !== 'both' || visiblePanes.length < 2) {
-      return 'row';
-    }
-
-    const styles = window.getComputedStyle(imageArea);
-    const innerWidth = imageArea.clientWidth
-      - parsePixelSize(styles.paddingLeft)
-      - parsePixelSize(styles.paddingRight);
-    const innerHeight = imageArea.clientHeight
-      - parsePixelSize(styles.paddingTop)
-      - parsePixelSize(styles.paddingBottom);
-    if (innerWidth <= 0 || innerHeight <= 0) {
-      return 'row';
-    }
-
-    const columnGap = parsePixelSize(styles.columnGap || styles.gap);
-    const rowGap = parsePixelSize(styles.rowGap || styles.gap);
-    const headerHeight = getPaneHeaderHeight();
-
-    const horizontalViewportWidth = Math.max(0, (innerWidth - columnGap) / visiblePanes.length);
-    const horizontalViewportHeight = Math.max(0, innerHeight - headerHeight);
-    const verticalViewportWidth = Math.max(0, innerWidth);
-    const verticalViewportHeight = Math.max(0, (innerHeight - rowGap) / visiblePanes.length - headerHeight);
-
-    const horizontalDistance = getSquareDistance(horizontalViewportWidth, horizontalViewportHeight);
-    const verticalDistance = getSquareDistance(verticalViewportWidth, verticalViewportHeight);
-
-    return verticalDistance < horizontalDistance ? 'column' : 'row';
-  }
-
   function applyPreviewPaneLayout() {
-    const direction = choosePreviewLayoutDirection();
-    const isVertical = direction === 'column';
+    const isVertical = isPreviewVisible() && previewMode === 'both' && previewLayout === 'vertical';
     imageArea.classList.toggle('image-area-vertical', isVertical);
     imageArea.dataset.previewLayout = isVertical ? 'vertical' : 'horizontal';
   }
@@ -72,14 +13,13 @@
     const previewVisible = isPreviewVisible();
     const tableVisible = isTableVisible();
     const bothVisible = previewVisible && tableVisible;
-    const horizontalSplit = bothVisible && mainLayout === 'horizontal';
 
     imageArea.classList.toggle('hidden', !previewVisible);
     tableArea.classList.toggle('hidden', !tableVisible);
     splitter.classList.toggle('hidden', !bothVisible);
-    main.classList.toggle('main-horizontal', horizontalSplit);
-    splitter.setAttribute('aria-orientation', horizontalSplit ? 'vertical' : 'horizontal');
-    splitter.setAttribute('aria-label', horizontalSplit ? '调整预览区域和属性表的宽度' : '调整预览区域和属性表的高度');
+    main.classList.remove('main-horizontal');
+    splitter.setAttribute('aria-orientation', 'horizontal');
+    splitter.setAttribute('aria-label', '调整预览区域和属性表的高度');
 
     if (!previewVisible) {
       imageArea.style.flex = '';
@@ -95,10 +35,8 @@
       return;
     }
 
-    const splitterSize = horizontalSplit
-      ? (splitter.getBoundingClientRect().width || 10)
-      : (splitter.getBoundingClientRect().height || 10);
-    const availableSize = (horizontalSplit ? main.clientWidth : main.clientHeight) - splitterSize;
+    const splitterSize = splitter.getBoundingClientRect().height || 10;
+    const availableSize = main.clientHeight - splitterSize;
     if (availableSize <= 0) {
       imageArea.style.flex = '1 1 60%';
       tableArea.style.flex = '1 1 40%';
@@ -118,16 +56,11 @@
   }
 
   function updateSplitRatioFromPointer(clientX, clientY) {
-    const horizontalSplit = isPreviewVisible() && isTableVisible() && mainLayout === 'horizontal';
-    const splitterSize = horizontalSplit
-      ? (splitter.getBoundingClientRect().width || 10)
-      : (splitter.getBoundingClientRect().height || 10);
-    const availableSize = (horizontalSplit ? main.clientWidth : main.clientHeight) - splitterSize;
+    const splitterSize = splitter.getBoundingClientRect().height || 10;
+    const availableSize = main.clientHeight - splitterSize;
     if (availableSize <= 0) { return; }
     const mainRect = main.getBoundingClientRect();
-    const rawImageSize = horizontalSplit
-      ? (clientX - mainRect.left - splitterSize / 2)
-      : (clientY - mainRect.top - splitterSize / 2);
+    const rawImageSize = clientY - mainRect.top - splitterSize / 2;
     const imageSize = clampSplitSize(availableSize, rawImageSize);
     splitRatio = imageSize / availableSize;
     applyMainLayout();

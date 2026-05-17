@@ -289,15 +289,39 @@ html, body {
 /* ---------- Table ---------- */
 .table-area {
   flex: 1 1 40%;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border-top: 1px solid var(--vscode-panel-border, #444);
   min-height: 120px;
-  padding-bottom: 20px;
   box-sizing: border-box;
 }
 
 .table-area.hidden {
   display: none;
+}
+
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--vscode-panel-border, #444);
+  background: var(--vscode-editorWidget-background, transparent);
+  flex: 0 0 auto;
+}
+
+.table-toolbar .tb-field-search {
+  flex: 1 1 320px;
+  max-width: 420px;
+}
+
+.table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 20px;
+  box-sizing: border-box;
 }
 
 body.splitter-dragging,
