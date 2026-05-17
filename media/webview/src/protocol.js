@@ -34,9 +34,7 @@
       return;
     }
     if (command === 'preview-fp' || command === 'preview-bd') {
-      if (viewMode === 'table-only') {
-        setViewMode('preview-only', { persist: true });
-      }
+      setViewMode('preview-only', { persist: true });
       setPreviewMode(command === 'preview-fp' ? 'fp' : 'bd');
     }
   }
