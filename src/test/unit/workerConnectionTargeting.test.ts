@@ -29,5 +29,14 @@ suite('worker connection targeting', () => {
       assert.ok(match[2].includes('CreateObject("LabVIEW.Application")'));
       assert.ok(body.includes('CanUseGenericComActivationForTarget(targetExe)'));
     });
+
+    test(`${fileName} launches a pinned target at most once per request`, () => {
+      const body = getSubBody(readWorkerScript(fileName), subroutine);
+
+      assert.ok(body.includes('launchIssued = False'));
+      assert.ok(body.includes('If Not launchIssued And ShouldActivateTargetInstance(attempts) Then'));
+      assert.ok(body.includes('launchIssued = True'));
+      assert.ok(body.includes('If launchIssued Then'));
+    });
   }
 });

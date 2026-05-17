@@ -28,10 +28,10 @@
   let currentPropsEnvelope = null;
   let currentLoadingState = { fp: false, bd: false, props: false };
   let propsFilterText = '';
-  /** @type {Record<'fp'|'bd', { scale: number, fitScale: number, x: number, y: number, naturalW: number, naturalH: number }>} */
+  /** @type {Record<'fp'|'bd', { scale: number, fitScale: number, x: number, y: number, naturalW: number, naturalH: number, contentBounds: { left: number, top: number, width: number, height: number } | null }>} */
   const viewState = {
-    fp: { scale: 1, fitScale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0 },
-    bd: { scale: 1, fitScale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0 },
+    fp: { scale: 1, fitScale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0, contentBounds: null },
+    bd: { scale: 1, fitScale: 1, x: 0, y: 0, naturalW: 0, naturalH: 0, contentBounds: null },
   };
   const ZOOM_MIN = 0.1;
   const ZOOM_MAX = 5.0;
@@ -39,7 +39,7 @@
   const DEFAULT_SPLIT_RATIO = 0.6;
   const MIN_SPLIT_PANE_PX = 120;
   let splitRatio = DEFAULT_SPLIT_RATIO;
-  let mainLayout = 'vertical'; // 'vertical' | 'horizontal'
+  let previewLayout = 'horizontal'; // 'horizontal' | 'vertical'
 
   // Enum metadata for known number-typed properties (mirrors read_vi_props.py).
   const NUMBER_ENUMS = {
@@ -119,6 +119,7 @@
   const tableControls = $('#table-controls');
   const errorsEl  = $('#errors');
   const main      = $('#main');
+  const propsTable = $('#props-table');
   const tbody     = $('#props-tbody');
   const tableArea = $('#table-area');
   const imageArea = $('#image-area');
@@ -172,6 +173,178 @@
     fp: document.querySelector('[data-zoom-label="fp"]'),
     bd: document.querySelector('[data-zoom-label="bd"]'),
   };
+  const propsTableCols = propsTable ? {
+    name: propsTable.querySelector('col.col-name'),
+    type: propsTable.querySelector('col.col-type'),
+    rw: propsTable.querySelector('col.col-rw'),
+    value: propsTable.querySelector('col.col-value'),
+    desc: propsTable.querySelector('col.col-desc'),
+  } : null;
+  const RESIZABLE_PROP_COLUMNS = ['name', 'type', 'rw', 'value'];
+  const PROP_COLUMN_ORDER = ['name', 'type', 'rw', 'value', 'desc'];
+  const PROP_COLUMN_MIN_WIDTHS = {
+    name: 140,
+    type: 88,
+    rw: 68,
+    value: 180,
+    desc: 180,
+  };
+  const DEFAULT_PROPS_TABLE_MIN_WIDTH = 940;
+  const propsTableColumnWidths = {
+    name: 0,
+    type: 0,
+    rw: 0,
+    value: 0,
+  };
+  let propsTableColumnsInitialized = false;
+  let propsTableColumnsCustomized = false;
+
+  function getPropsTableHeaderCells() {
+    if (!propsTable || !propsTable.tHead || propsTable.tHead.rows.length === 0) {
+      return [];
+    }
+    return Array.from(propsTable.tHead.rows[0].cells);
+  }
+
+  function isPropsTableVisible() {
+    return !!tableArea
+      && !tableArea.classList.contains('hidden')
+      && tableArea.getBoundingClientRect().width > 0;
+  }
+
+  function applyPropsTableColumnWidths() {
+    if (!propsTable || !propsTableCols) {
+      return;
+    }
+
+    for (const column of RESIZABLE_PROP_COLUMNS) {
+      const col = propsTableCols[column];
+      if (!col) {
+        continue;
+      }
+      col.style.width = Math.round(propsTableColumnWidths[column]) + 'px';
+    }
+
+    if (propsTableCols.desc) {
+      propsTableCols.desc.style.width = '';
+    }
+
+    const requiredMinWidth = RESIZABLE_PROP_COLUMNS.reduce(
+      (sum, column) => sum + Math.max(PROP_COLUMN_MIN_WIDTHS[column], propsTableColumnWidths[column]),
+      0,
+    ) + PROP_COLUMN_MIN_WIDTHS.desc;
+    propsTable.style.minWidth = Math.max(DEFAULT_PROPS_TABLE_MIN_WIDTH, requiredMinWidth) + 'px';
+  }
+
+  function measurePropsTableColumnWidths() {
+    if (!propsTable || !propsTableCols || !isPropsTableVisible()) {
+      return false;
+    }
+
+    const headerCells = getPropsTableHeaderCells();
+    if (headerCells.length < PROP_COLUMN_ORDER.length) {
+      return false;
+    }
+
+    RESIZABLE_PROP_COLUMNS.forEach((column, index) => {
+      propsTableColumnWidths[column] = Math.max(
+        PROP_COLUMN_MIN_WIDTHS[column],
+        Math.round(headerCells[index].getBoundingClientRect().width),
+      );
+    });
+
+    propsTableColumnsInitialized = true;
+    applyPropsTableColumnWidths();
+    return true;
+  }
+
+  function ensurePropsTableColumnWidths() {
+    if (!propsTable || !propsTableCols || !isPropsTableVisible()) {
+      return;
+    }
+
+    if (!propsTableColumnsInitialized || !propsTableColumnsCustomized) {
+      measurePropsTableColumnWidths();
+      return;
+    }
+
+    applyPropsTableColumnWidths();
+  }
+
+  function beginPropsTableColumnResize(event, column) {
+    if (event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!propsTableColumnsInitialized && !measurePropsTableColumnWidths()) {
+      return;
+    }
+
+    const startX = event.clientX;
+    const startWidth = propsTableColumnWidths[column];
+    const handle = event.currentTarget;
+    const pointerId = event.pointerId;
+    propsTableColumnsCustomized = true;
+    document.body.classList.add('column-resizing');
+    if (handle && typeof handle.setPointerCapture === 'function') {
+      handle.setPointerCapture(pointerId);
+    }
+
+    const onPointerMove = (moveEvent) => {
+      const nextWidth = Math.max(
+        PROP_COLUMN_MIN_WIDTHS[column],
+        Math.round(startWidth + (moveEvent.clientX - startX)),
+      );
+      if (nextWidth === propsTableColumnWidths[column]) {
+        return;
+      }
+      propsTableColumnWidths[column] = nextWidth;
+      applyPropsTableColumnWidths();
+    };
+
+    const stopResize = () => {
+      document.body.classList.remove('column-resizing');
+      if (handle && typeof handle.releasePointerCapture === 'function' && handle.hasPointerCapture(pointerId)) {
+        handle.releasePointerCapture(pointerId);
+      }
+      if (handle) {
+        handle.removeEventListener('pointermove', onPointerMove);
+        handle.removeEventListener('pointerup', stopResize);
+        handle.removeEventListener('pointercancel', stopResize);
+      }
+    };
+
+    if (handle) {
+      handle.addEventListener('pointermove', onPointerMove);
+      handle.addEventListener('pointerup', stopResize);
+      handle.addEventListener('pointercancel', stopResize);
+    }
+  }
+
+  function installPropsTableColumnResizers() {
+    const headerCells = getPropsTableHeaderCells();
+    if (headerCells.length < PROP_COLUMN_ORDER.length) {
+      return;
+    }
+
+    RESIZABLE_PROP_COLUMNS.forEach((column, index) => {
+      const th = headerCells[index];
+      if (!th || th.querySelector('.column-resizer')) {
+        return;
+      }
+      th.dataset.columnKey = column;
+      const handle = document.createElement('div');
+      handle.className = 'column-resizer';
+      handle.dataset.columnKey = column;
+      handle.setAttribute('role', 'presentation');
+      handle.addEventListener('pointerdown', (event) => beginPropsTableColumnResize(event, column));
+      th.appendChild(handle);
+    });
+  }
+
+  installPropsTableColumnResizers();
 
   // -------------------------------------------------------------------------
   // Message I/O
@@ -209,9 +382,7 @@
       return;
     }
     if (command === 'preview-fp' || command === 'preview-bd') {
-      if (viewMode === 'table-only') {
-        setViewMode('preview-only', { persist: true });
-      }
+      setViewMode('preview-only', { persist: true });
       setPreviewMode(command === 'preview-fp' ? 'fp' : 'bd');
     }
   }
@@ -309,83 +480,49 @@
     return Math.max(minPanePx, Math.min(totalSize - minPanePx, desiredSize));
   }
 
-  function parsePixelSize(value) {
-    const parsed = Number.parseFloat(value || '0');
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-
-  function getVisiblePreviewPanes() {
-    return Object.values(panes).filter((pane) => pane && !pane.classList.contains('hidden'));
-  }
-
-  function getPaneHeaderHeight() {
-    return getVisiblePreviewPanes().reduce((maxHeight, pane) => {
-      const header = pane.querySelector('.pane-header');
-      if (!(header instanceof HTMLElement)) {
-        return maxHeight;
-      }
-      return Math.max(maxHeight, header.getBoundingClientRect().height || 0);
-    }, 0);
-  }
-
-  function getSquareDistance(width, height) {
-    if (width <= 0 || height <= 0) {
-      return Number.POSITIVE_INFINITY;
-    }
-    return Math.abs(Math.log(width / height));
-  }
-
-  function choosePreviewLayoutDirection() {
-    const visiblePanes = getVisiblePreviewPanes();
-    if (!isPreviewVisible() || previewMode !== 'both' || visiblePanes.length < 2) {
-      return 'row';
-    }
-
-    const styles = window.getComputedStyle(imageArea);
-    const innerWidth = imageArea.clientWidth
-      - parsePixelSize(styles.paddingLeft)
-      - parsePixelSize(styles.paddingRight);
-    const innerHeight = imageArea.clientHeight
-      - parsePixelSize(styles.paddingTop)
-      - parsePixelSize(styles.paddingBottom);
-    if (innerWidth <= 0 || innerHeight <= 0) {
-      return 'row';
-    }
-
-    const columnGap = parsePixelSize(styles.columnGap || styles.gap);
-    const rowGap = parsePixelSize(styles.rowGap || styles.gap);
-    const headerHeight = getPaneHeaderHeight();
-
-    const horizontalViewportWidth = Math.max(0, (innerWidth - columnGap) / visiblePanes.length);
-    const horizontalViewportHeight = Math.max(0, innerHeight - headerHeight);
-    const verticalViewportWidth = Math.max(0, innerWidth);
-    const verticalViewportHeight = Math.max(0, (innerHeight - rowGap) / visiblePanes.length - headerHeight);
-
-    const horizontalDistance = getSquareDistance(horizontalViewportWidth, horizontalViewportHeight);
-    const verticalDistance = getSquareDistance(verticalViewportWidth, verticalViewportHeight);
-
-    return verticalDistance < horizontalDistance ? 'column' : 'row';
-  }
-
   function applyPreviewPaneLayout() {
-    const direction = choosePreviewLayoutDirection();
-    const isVertical = direction === 'column';
+    const isVertical = isPreviewVisible() && previewMode === 'both' && previewLayout === 'vertical';
+    panes.fp.style.flex = '';
+    panes.bd.style.flex = '';
     imageArea.classList.toggle('image-area-vertical', isVertical);
     imageArea.dataset.previewLayout = isVertical ? 'vertical' : 'horizontal';
+  }
+
+  function getPanelContentBounds(panel) {
+    const vs = viewState[panel];
+    if (vs.contentBounds && vs.contentBounds.width > 0 && vs.contentBounds.height > 0) {
+      return vs.contentBounds;
+    }
+    if (!vs.naturalW || !vs.naturalH) {
+      return null;
+    }
+    return { left: 0, top: 0, width: vs.naturalW, height: vs.naturalH };
+  }
+
+  function getFitPadding(rect) {
+    if (!isPreviewVisible() || previewMode !== 'both') {
+      return { x: 0, y: 0 };
+    }
+
+    const shortestSide = Math.min(rect.width, rect.height);
+    const padding = Math.max(16, Math.min(32, Math.round(shortestSide * 0.06)));
+    return {
+      x: Math.min(padding, Math.max(0, rect.width / 4)),
+      y: Math.min(padding, Math.max(0, rect.height / 4)),
+    };
   }
 
   function applyMainLayout() {
     const previewVisible = isPreviewVisible();
     const tableVisible = isTableVisible();
     const bothVisible = previewVisible && tableVisible;
-    const horizontalSplit = bothVisible && mainLayout === 'horizontal';
 
     imageArea.classList.toggle('hidden', !previewVisible);
     tableArea.classList.toggle('hidden', !tableVisible);
     splitter.classList.toggle('hidden', !bothVisible);
-    main.classList.toggle('main-horizontal', horizontalSplit);
-    splitter.setAttribute('aria-orientation', horizontalSplit ? 'vertical' : 'horizontal');
-    splitter.setAttribute('aria-label', horizontalSplit ? '调整预览区域和属性表的宽度' : '调整预览区域和属性表的高度');
+    main.classList.remove('main-horizontal');
+    splitter.setAttribute('aria-orientation', 'horizontal');
+    splitter.setAttribute('aria-label', '调整预览区域和属性表的高度');
 
     if (!previewVisible) {
       imageArea.style.flex = '';
@@ -401,10 +538,8 @@
       return;
     }
 
-    const splitterSize = horizontalSplit
-      ? (splitter.getBoundingClientRect().width || 10)
-      : (splitter.getBoundingClientRect().height || 10);
-    const availableSize = (horizontalSplit ? main.clientWidth : main.clientHeight) - splitterSize;
+    const splitterSize = splitter.getBoundingClientRect().height || 10;
+    const availableSize = main.clientHeight - splitterSize;
     if (availableSize <= 0) {
       imageArea.style.flex = '1 1 60%';
       tableArea.style.flex = '1 1 40%';
@@ -424,16 +559,11 @@
   }
 
   function updateSplitRatioFromPointer(clientX, clientY) {
-    const horizontalSplit = isPreviewVisible() && isTableVisible() && mainLayout === 'horizontal';
-    const splitterSize = horizontalSplit
-      ? (splitter.getBoundingClientRect().width || 10)
-      : (splitter.getBoundingClientRect().height || 10);
-    const availableSize = (horizontalSplit ? main.clientWidth : main.clientHeight) - splitterSize;
+    const splitterSize = splitter.getBoundingClientRect().height || 10;
+    const availableSize = main.clientHeight - splitterSize;
     if (availableSize <= 0) { return; }
     const mainRect = main.getBoundingClientRect();
-    const rawImageSize = horizontalSplit
-      ? (clientX - mainRect.left - splitterSize / 2)
-      : (clientY - mainRect.top - splitterSize / 2);
+    const rawImageSize = clientY - mainRect.top - splitterSize / 2;
     const imageSize = clampSplitSize(availableSize, rawImageSize);
     splitRatio = imageSize / availableSize;
     applyMainLayout();
@@ -466,17 +596,18 @@
     vs.y = 0;
     vs.naturalW = 0;
     vs.naturalH = 0;
+    vs.contentBounds = null;
     applyTransform(panel);
     refreshZoomLabel(panel);
     resetViewportBackground(panel);
   }
 
-  function detectImageBackgroundColor(img) {
+  function analyzeImagePresentation(img) {
     if (!img || !img.naturalWidth || !img.naturalHeight) {
-      return null;
+      return { backgroundColor: null, contentBounds: null };
     }
 
-    const maxSampleSize = 128;
+    const maxSampleSize = 256;
     const longestSide = Math.max(img.naturalWidth, img.naturalHeight);
     const sampleScale = longestSide > maxSampleSize ? (maxSampleSize / longestSide) : 1;
     const sampleWidth = Math.max(1, Math.round(img.naturalWidth * sampleScale));
@@ -490,7 +621,7 @@
 
     const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) {
-      return null;
+      return { backgroundColor: null, contentBounds: null };
     }
 
     try {
@@ -519,6 +650,8 @@
         buckets.set(key, bucket);
       };
 
+      const getPixelOffset = (x, y) => ((y * sampleWidth) + x) * 4;
+
       for (let y = 0; y < sampleHeight; y += 1) {
         for (let x = 0; x < sampleWidth; x += 1) {
           const isBorderPixel = x < borderWidth
@@ -528,7 +661,7 @@
           if (!isBorderPixel) {
             continue;
           }
-          collectPixel((y * sampleWidth + x) * 4);
+          collectPixel(getPixelOffset(x, y));
         }
       }
 
@@ -540,22 +673,80 @@
       }
 
       if (!bestBucket || bestBucket.weight <= 0) {
-        return null;
+        return { backgroundColor: null, contentBounds: null };
       }
 
       const red = Math.round(bestBucket.r / bestBucket.weight);
       const green = Math.round(bestBucket.g / bestBucket.weight);
       const blue = Math.round(bestBucket.b / bestBucket.weight);
-      return 'rgb(' + red + ', ' + green + ', ' + blue + ')';
+      const background = { alpha: 255, red, green, blue };
+      const tolerance = 18;
+      let minX = sampleWidth;
+      let minY = sampleHeight;
+      let maxX = -1;
+      let maxY = -1;
+
+      const isBackgroundPixel = (offset) => {
+        const alpha = data[offset + 3];
+        if (alpha < 32) {
+          return true;
+        }
+        return Math.abs(alpha - background.alpha) <= tolerance
+          && Math.abs(data[offset] - background.red) <= tolerance
+          && Math.abs(data[offset + 1] - background.green) <= tolerance
+          && Math.abs(data[offset + 2] - background.blue) <= tolerance;
+      };
+
+      for (let y = 0; y < sampleHeight; y += 1) {
+        for (let x = 0; x < sampleWidth; x += 1) {
+          const offset = getPixelOffset(x, y);
+          if (isBackgroundPixel(offset)) {
+            continue;
+          }
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        }
+      }
+
+      let contentBounds = null;
+      if (maxX >= minX && maxY >= minY) {
+        const scaleX = img.naturalWidth / sampleWidth;
+        const scaleY = img.naturalHeight / sampleHeight;
+        const left = Math.max(0, Math.floor(minX * scaleX));
+        const top = Math.max(0, Math.floor(minY * scaleY));
+        const right = Math.min(img.naturalWidth, Math.ceil((maxX + 1) * scaleX));
+        const bottom = Math.min(img.naturalHeight, Math.ceil((maxY + 1) * scaleY));
+        contentBounds = {
+          left,
+          top,
+          width: Math.max(1, right - left),
+          height: Math.max(1, bottom - top),
+        };
+      }
+
+      return {
+        backgroundColor: 'rgb(' + red + ', ' + green + ', ' + blue + ')',
+        contentBounds,
+      };
     } catch {
-      return null;
+      return { backgroundColor: null, contentBounds: null };
     }
   }
 
   function syncLoadedImagePresentation(panel) {
     const img = images[panel];
-    applyViewportBackground(panel, detectImageBackgroundColor(img));
-    requestAnimationFrame(() => fitToViewport(panel));
+    const presentation = analyzeImagePresentation(img);
+    viewState[panel].contentBounds = presentation.contentBounds;
+    applyViewportBackground(panel, presentation.backgroundColor);
+    requestAnimationFrame(() => {
+      if (previewMode === 'both' && isPreviewVisible()) {
+        refreshLayout();
+        return;
+      }
+      fitToViewport(panel);
+    });
   }
 
   function setImage(panel, uri, loading) {
@@ -605,22 +796,29 @@
     // 当面板被隐藏时，rect 是 0×0；此时直接返回，避免把缩放比夹到 ZOOM_MIN
     // 之后再次显示时图像近乎不可见。
     if (rect.width <= 0 || rect.height <= 0) { return; }
-    const sx = rect.width / vs.naturalW;
-    const sy = rect.height / vs.naturalH;
+    const bounds = getPanelContentBounds(panel);
+    if (!bounds) { return; }
+    const fitPadding = getFitPadding(rect);
+    const availableWidth = Math.max(1, rect.width - fitPadding.x * 2);
+    const availableHeight = Math.max(1, rect.height - fitPadding.y * 2);
+    const sx = availableWidth / bounds.width;
+    const sy = availableHeight / bounds.height;
     const scale = Math.min(1, Math.min(sx, sy));
     if (!Number.isFinite(scale) || scale <= 0) { return; }
     vs.fitScale = scale;
     vs.scale = scale;
-    vs.x = Math.max(0, (rect.width - vs.naturalW * scale) / 2);
-    vs.y = Math.max(0, (rect.height - vs.naturalH * scale) / 2);
-    applyTransform(panel);
+    vs.x = fitPadding.x + ((availableWidth - bounds.width * scale) / 2) - (bounds.left * scale);
+    vs.y = fitPadding.y + ((availableHeight - bounds.height * scale) / 2) - (bounds.top * scale);
     refreshZoomLabel(panel);
+    applyTransform(panel);
   }
 
   function applyTransform(panel) {
     const vs = viewState[panel];
     const img = images[panel];
-    img.style.transform = 'translate(' + vs.x + 'px, ' + vs.y + 'px) scale(' + vs.scale + ')';
+    img.style.left = vs.x + 'px';
+    img.style.top = vs.y + 'px';
+    img.style.transform = 'scale(' + vs.scale + ')';
   }
 
   function refreshZoomLabel(panel) {
@@ -754,6 +952,7 @@
       applyMainLayout();
       fitToViewport('fp');
       fitToViewport('bd');
+      ensurePropsTableColumnWidths();
     });
   }
 
@@ -763,13 +962,13 @@
     previewControls.classList.toggle('hidden', !previewVisible);
     tableControls.classList.toggle('hidden', !tableVisible && !hasDirtyChanges());
     if (btnLayout) {
-      const bothVisible = previewVisible && tableVisible;
-      btnLayout.classList.toggle('hidden', !bothVisible);
-      const horizontal = mainLayout === 'horizontal';
+      const showPreviewLayoutButton = previewVisible && previewMode === 'both';
+      btnLayout.classList.toggle('hidden', !showPreviewLayoutButton);
+      const horizontal = previewLayout === 'horizontal';
       btnLayout.textContent = horizontal ? '上下布局' : '左右布局';
       btnLayout.title = horizontal
-        ? '切换为上下布局（预览在上，属性表在下）'
-        : '切换为左右布局（预览在左，属性表在右）';
+        ? '切换为上下布局（前面板在上，程序框图在下）'
+        : '切换为左右布局（前面板在左，程序框图在右）';
     }
     updateDynamicUi();
   }
@@ -834,6 +1033,7 @@
   function setPreviewMode(mode) {
     previewMode = mode;
     applyPreviewMode();
+    updateToolbarVisibility();
     refreshLayout();
   }
 
@@ -859,7 +1059,7 @@
   btnBoth.addEventListener('click', () => setPreviewMode('both'));
   if (btnLayout) {
     btnLayout.addEventListener('click', () => {
-      mainLayout = mainLayout === 'horizontal' ? 'vertical' : 'horizontal';
+      previewLayout = previewLayout === 'horizontal' ? 'vertical' : 'horizontal';
       updateToolbarVisibility();
       refreshLayout();
     });

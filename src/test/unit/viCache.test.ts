@@ -36,14 +36,16 @@ suite('ViCache', () => {
     assert.strictEqual(ViCache.md5OfFileSync(tmpFile), ref);
   });
 
-  test('entryFor builds the conventional layout under root/<hash>/', () => {
+  test('entryFor builds split props/preview layouts', () => {
     const cache = new ViCache(root);
-    const e = cache.entryFor('abcdef');
-    assert.strictEqual(e.dir, path.join(root, 'abcdef'));
-    assert.ok(e.artifacts.fpImage.endsWith(path.join('abcdef', 'fp.png')));
-    assert.ok(e.artifacts.bdImage.endsWith(path.join('abcdef', 'bd.png')));
-    assert.ok(e.artifacts.propsJson.endsWith(path.join('abcdef', 'props.json')));
-    assert.ok(e.artifacts.meta.endsWith(path.join('abcdef', 'meta.json')));
+    const e = cache.entryFor('abcdef', tmpFile);
+    assert.strictEqual(e.dir, path.join(root, 'props', 'abcdef'));
+    assert.strictEqual(e.previewDir, path.join(root, 'preview', ViCache.previewKeyForPath(tmpFile)));
+    assert.ok(e.artifacts.fpImage.endsWith(path.join('preview', e.previewKey, 'fp.png')));
+    assert.ok(e.artifacts.bdImage.endsWith(path.join('preview', e.previewKey, 'bd.png')));
+    assert.ok(e.artifacts.propsJson.endsWith(path.join('props', 'abcdef', 'props.json')));
+    assert.ok(e.artifacts.meta.endsWith(path.join('props', 'abcdef', 'meta.json')));
+    assert.ok(e.artifacts.previewMeta.endsWith(path.join('preview', e.previewKey, 'meta.json')));
   });
 
   test('ensureEntry creates the directory and writes meta.json once', async () => {
@@ -52,6 +54,7 @@ suite('ViCache', () => {
     const r1 = await cache.ensureEntry(e, tmpFile);
     assert.strictEqual(r1.pathChanged, false);
     assert.ok(fs.existsSync(e.artifacts.meta));
+    assert.ok(fs.existsSync(e.previewDir));
     const meta = JSON.parse(fs.readFileSync(e.artifacts.meta, 'utf-8'));
     assert.strictEqual(meta.viPath, tmpFile);
     assert.strictEqual(meta.hash, e.hash);
@@ -102,15 +105,38 @@ suite('ViCache', () => {
     const e = await cache.entryForFile(tmpFile);
     await cache.ensureEntry(e, tmpFile);
     assert.ok(fs.existsSync(e.dir));
-    await cache.invalidate(e.hash);
+    await fs.promises.writeFile(e.artifacts.fpImage, Buffer.from([1]));
+    await cache.markPreviewArtifactsCurrent(e, tmpFile, ['fp']);
+    assert.ok(fs.existsSync(e.previewDir));
+    await cache.invalidate(e);
     assert.strictEqual(fs.existsSync(e.dir), false);
+    assert.strictEqual(fs.existsSync(e.previewDir), false);
   });
 
-  test('different .vi contents yield different hashes', async () => {
+  test('different .vi contents yield different props hashes but the same preview key', async () => {
     const cache = new ViCache(root);
     const e1 = await cache.entryForFile(tmpFile);
     fs.appendFileSync(tmpFile, Buffer.from([42]));
     const e2 = await cache.entryForFile(tmpFile);
     assert.notStrictEqual(e1.hash, e2.hash);
+    assert.strictEqual(e1.previewKey, e2.previewKey);
+  });
+
+  test('preview freshness is tracked separately per panel and per current hash', async () => {
+    const cache = new ViCache(root);
+    const e1 = await cache.entryForFile(tmpFile);
+    await cache.ensureEntry(e1, tmpFile);
+    await fs.promises.writeFile(e1.artifacts.fpImage, Buffer.from([1]));
+    await fs.promises.writeFile(e1.artifacts.bdImage, Buffer.from([2]));
+    await cache.markPreviewArtifactsCurrent(e1, tmpFile, ['fp']);
+
+    assert.strictEqual(await cache.hasFreshPreview(e1, 'fp'), true);
+    assert.strictEqual(await cache.hasFreshPreview(e1, 'bd'), false);
+
+    fs.appendFileSync(tmpFile, Buffer.from([42]));
+    const e2 = await cache.entryForFile(tmpFile);
+    await cache.ensureEntry(e2, tmpFile);
+
+    assert.strictEqual(await cache.hasFreshPreview(e2, 'fp'), false);
   });
 });

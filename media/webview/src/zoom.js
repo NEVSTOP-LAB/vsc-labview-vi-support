@@ -3,83 +3,49 @@
     return Math.max(minPanePx, Math.min(totalSize - minPanePx, desiredSize));
   }
 
-  function parsePixelSize(value) {
-    const parsed = Number.parseFloat(value || '0');
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-
-  function getVisiblePreviewPanes() {
-    return Object.values(panes).filter((pane) => pane && !pane.classList.contains('hidden'));
-  }
-
-  function getPaneHeaderHeight() {
-    return getVisiblePreviewPanes().reduce((maxHeight, pane) => {
-      const header = pane.querySelector('.pane-header');
-      if (!(header instanceof HTMLElement)) {
-        return maxHeight;
-      }
-      return Math.max(maxHeight, header.getBoundingClientRect().height || 0);
-    }, 0);
-  }
-
-  function getSquareDistance(width, height) {
-    if (width <= 0 || height <= 0) {
-      return Number.POSITIVE_INFINITY;
-    }
-    return Math.abs(Math.log(width / height));
-  }
-
-  function choosePreviewLayoutDirection() {
-    const visiblePanes = getVisiblePreviewPanes();
-    if (!isPreviewVisible() || previewMode !== 'both' || visiblePanes.length < 2) {
-      return 'row';
-    }
-
-    const styles = window.getComputedStyle(imageArea);
-    const innerWidth = imageArea.clientWidth
-      - parsePixelSize(styles.paddingLeft)
-      - parsePixelSize(styles.paddingRight);
-    const innerHeight = imageArea.clientHeight
-      - parsePixelSize(styles.paddingTop)
-      - parsePixelSize(styles.paddingBottom);
-    if (innerWidth <= 0 || innerHeight <= 0) {
-      return 'row';
-    }
-
-    const columnGap = parsePixelSize(styles.columnGap || styles.gap);
-    const rowGap = parsePixelSize(styles.rowGap || styles.gap);
-    const headerHeight = getPaneHeaderHeight();
-
-    const horizontalViewportWidth = Math.max(0, (innerWidth - columnGap) / visiblePanes.length);
-    const horizontalViewportHeight = Math.max(0, innerHeight - headerHeight);
-    const verticalViewportWidth = Math.max(0, innerWidth);
-    const verticalViewportHeight = Math.max(0, (innerHeight - rowGap) / visiblePanes.length - headerHeight);
-
-    const horizontalDistance = getSquareDistance(horizontalViewportWidth, horizontalViewportHeight);
-    const verticalDistance = getSquareDistance(verticalViewportWidth, verticalViewportHeight);
-
-    return verticalDistance < horizontalDistance ? 'column' : 'row';
-  }
-
   function applyPreviewPaneLayout() {
-    const direction = choosePreviewLayoutDirection();
-    const isVertical = direction === 'column';
+    const isVertical = isPreviewVisible() && previewMode === 'both' && previewLayout === 'vertical';
+    panes.fp.style.flex = '';
+    panes.bd.style.flex = '';
     imageArea.classList.toggle('image-area-vertical', isVertical);
     imageArea.dataset.previewLayout = isVertical ? 'vertical' : 'horizontal';
+  }
+
+  function getPanelContentBounds(panel) {
+    const vs = viewState[panel];
+    if (vs.contentBounds && vs.contentBounds.width > 0 && vs.contentBounds.height > 0) {
+      return vs.contentBounds;
+    }
+    if (!vs.naturalW || !vs.naturalH) {
+      return null;
+    }
+    return { left: 0, top: 0, width: vs.naturalW, height: vs.naturalH };
+  }
+
+  function getFitPadding(rect) {
+    if (!isPreviewVisible() || previewMode !== 'both') {
+      return { x: 0, y: 0 };
+    }
+
+    const shortestSide = Math.min(rect.width, rect.height);
+    const padding = Math.max(16, Math.min(32, Math.round(shortestSide * 0.06)));
+    return {
+      x: Math.min(padding, Math.max(0, rect.width / 4)),
+      y: Math.min(padding, Math.max(0, rect.height / 4)),
+    };
   }
 
   function applyMainLayout() {
     const previewVisible = isPreviewVisible();
     const tableVisible = isTableVisible();
     const bothVisible = previewVisible && tableVisible;
-    const horizontalSplit = bothVisible && mainLayout === 'horizontal';
 
     imageArea.classList.toggle('hidden', !previewVisible);
     tableArea.classList.toggle('hidden', !tableVisible);
     splitter.classList.toggle('hidden', !bothVisible);
-    main.classList.toggle('main-horizontal', horizontalSplit);
-    splitter.setAttribute('aria-orientation', horizontalSplit ? 'vertical' : 'horizontal');
-    splitter.setAttribute('aria-label', horizontalSplit ? '调整预览区域和属性表的宽度' : '调整预览区域和属性表的高度');
+    main.classList.remove('main-horizontal');
+    splitter.setAttribute('aria-orientation', 'horizontal');
+    splitter.setAttribute('aria-label', '调整预览区域和属性表的高度');
 
     if (!previewVisible) {
       imageArea.style.flex = '';
@@ -95,10 +61,8 @@
       return;
     }
 
-    const splitterSize = horizontalSplit
-      ? (splitter.getBoundingClientRect().width || 10)
-      : (splitter.getBoundingClientRect().height || 10);
-    const availableSize = (horizontalSplit ? main.clientWidth : main.clientHeight) - splitterSize;
+    const splitterSize = splitter.getBoundingClientRect().height || 10;
+    const availableSize = main.clientHeight - splitterSize;
     if (availableSize <= 0) {
       imageArea.style.flex = '1 1 60%';
       tableArea.style.flex = '1 1 40%';
@@ -118,16 +82,11 @@
   }
 
   function updateSplitRatioFromPointer(clientX, clientY) {
-    const horizontalSplit = isPreviewVisible() && isTableVisible() && mainLayout === 'horizontal';
-    const splitterSize = horizontalSplit
-      ? (splitter.getBoundingClientRect().width || 10)
-      : (splitter.getBoundingClientRect().height || 10);
-    const availableSize = (horizontalSplit ? main.clientWidth : main.clientHeight) - splitterSize;
+    const splitterSize = splitter.getBoundingClientRect().height || 10;
+    const availableSize = main.clientHeight - splitterSize;
     if (availableSize <= 0) { return; }
     const mainRect = main.getBoundingClientRect();
-    const rawImageSize = horizontalSplit
-      ? (clientX - mainRect.left - splitterSize / 2)
-      : (clientY - mainRect.top - splitterSize / 2);
+    const rawImageSize = clientY - mainRect.top - splitterSize / 2;
     const imageSize = clampSplitSize(availableSize, rawImageSize);
     splitRatio = imageSize / availableSize;
     applyMainLayout();
@@ -160,17 +119,18 @@
     vs.y = 0;
     vs.naturalW = 0;
     vs.naturalH = 0;
+    vs.contentBounds = null;
     applyTransform(panel);
     refreshZoomLabel(panel);
     resetViewportBackground(panel);
   }
 
-  function detectImageBackgroundColor(img) {
+  function analyzeImagePresentation(img) {
     if (!img || !img.naturalWidth || !img.naturalHeight) {
-      return null;
+      return { backgroundColor: null, contentBounds: null };
     }
 
-    const maxSampleSize = 128;
+    const maxSampleSize = 256;
     const longestSide = Math.max(img.naturalWidth, img.naturalHeight);
     const sampleScale = longestSide > maxSampleSize ? (maxSampleSize / longestSide) : 1;
     const sampleWidth = Math.max(1, Math.round(img.naturalWidth * sampleScale));
@@ -184,7 +144,7 @@
 
     const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) {
-      return null;
+      return { backgroundColor: null, contentBounds: null };
     }
 
     try {
@@ -213,6 +173,8 @@
         buckets.set(key, bucket);
       };
 
+      const getPixelOffset = (x, y) => ((y * sampleWidth) + x) * 4;
+
       for (let y = 0; y < sampleHeight; y += 1) {
         for (let x = 0; x < sampleWidth; x += 1) {
           const isBorderPixel = x < borderWidth
@@ -222,7 +184,7 @@
           if (!isBorderPixel) {
             continue;
           }
-          collectPixel((y * sampleWidth + x) * 4);
+          collectPixel(getPixelOffset(x, y));
         }
       }
 
@@ -234,22 +196,80 @@
       }
 
       if (!bestBucket || bestBucket.weight <= 0) {
-        return null;
+        return { backgroundColor: null, contentBounds: null };
       }
 
       const red = Math.round(bestBucket.r / bestBucket.weight);
       const green = Math.round(bestBucket.g / bestBucket.weight);
       const blue = Math.round(bestBucket.b / bestBucket.weight);
-      return 'rgb(' + red + ', ' + green + ', ' + blue + ')';
+      const background = { alpha: 255, red, green, blue };
+      const tolerance = 18;
+      let minX = sampleWidth;
+      let minY = sampleHeight;
+      let maxX = -1;
+      let maxY = -1;
+
+      const isBackgroundPixel = (offset) => {
+        const alpha = data[offset + 3];
+        if (alpha < 32) {
+          return true;
+        }
+        return Math.abs(alpha - background.alpha) <= tolerance
+          && Math.abs(data[offset] - background.red) <= tolerance
+          && Math.abs(data[offset + 1] - background.green) <= tolerance
+          && Math.abs(data[offset + 2] - background.blue) <= tolerance;
+      };
+
+      for (let y = 0; y < sampleHeight; y += 1) {
+        for (let x = 0; x < sampleWidth; x += 1) {
+          const offset = getPixelOffset(x, y);
+          if (isBackgroundPixel(offset)) {
+            continue;
+          }
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        }
+      }
+
+      let contentBounds = null;
+      if (maxX >= minX && maxY >= minY) {
+        const scaleX = img.naturalWidth / sampleWidth;
+        const scaleY = img.naturalHeight / sampleHeight;
+        const left = Math.max(0, Math.floor(minX * scaleX));
+        const top = Math.max(0, Math.floor(minY * scaleY));
+        const right = Math.min(img.naturalWidth, Math.ceil((maxX + 1) * scaleX));
+        const bottom = Math.min(img.naturalHeight, Math.ceil((maxY + 1) * scaleY));
+        contentBounds = {
+          left,
+          top,
+          width: Math.max(1, right - left),
+          height: Math.max(1, bottom - top),
+        };
+      }
+
+      return {
+        backgroundColor: 'rgb(' + red + ', ' + green + ', ' + blue + ')',
+        contentBounds,
+      };
     } catch {
-      return null;
+      return { backgroundColor: null, contentBounds: null };
     }
   }
 
   function syncLoadedImagePresentation(panel) {
     const img = images[panel];
-    applyViewportBackground(panel, detectImageBackgroundColor(img));
-    requestAnimationFrame(() => fitToViewport(panel));
+    const presentation = analyzeImagePresentation(img);
+    viewState[panel].contentBounds = presentation.contentBounds;
+    applyViewportBackground(panel, presentation.backgroundColor);
+    requestAnimationFrame(() => {
+      if (previewMode === 'both' && isPreviewVisible()) {
+        refreshLayout();
+        return;
+      }
+      fitToViewport(panel);
+    });
   }
 
   function setImage(panel, uri, loading) {
@@ -299,22 +319,29 @@
     // 当面板被隐藏时，rect 是 0×0；此时直接返回，避免把缩放比夹到 ZOOM_MIN
     // 之后再次显示时图像近乎不可见。
     if (rect.width <= 0 || rect.height <= 0) { return; }
-    const sx = rect.width / vs.naturalW;
-    const sy = rect.height / vs.naturalH;
+    const bounds = getPanelContentBounds(panel);
+    if (!bounds) { return; }
+    const fitPadding = getFitPadding(rect);
+    const availableWidth = Math.max(1, rect.width - fitPadding.x * 2);
+    const availableHeight = Math.max(1, rect.height - fitPadding.y * 2);
+    const sx = availableWidth / bounds.width;
+    const sy = availableHeight / bounds.height;
     const scale = Math.min(1, Math.min(sx, sy));
     if (!Number.isFinite(scale) || scale <= 0) { return; }
     vs.fitScale = scale;
     vs.scale = scale;
-    vs.x = Math.max(0, (rect.width - vs.naturalW * scale) / 2);
-    vs.y = Math.max(0, (rect.height - vs.naturalH * scale) / 2);
-    applyTransform(panel);
+    vs.x = fitPadding.x + ((availableWidth - bounds.width * scale) / 2) - (bounds.left * scale);
+    vs.y = fitPadding.y + ((availableHeight - bounds.height * scale) / 2) - (bounds.top * scale);
     refreshZoomLabel(panel);
+    applyTransform(panel);
   }
 
   function applyTransform(panel) {
     const vs = viewState[panel];
     const img = images[panel];
-    img.style.transform = 'translate(' + vs.x + 'px, ' + vs.y + 'px) scale(' + vs.scale + ')';
+    img.style.left = vs.x + 'px';
+    img.style.top = vs.y + 'px';
+    img.style.transform = 'scale(' + vs.scale + ')';
   }
 
   function refreshZoomLabel(panel) {

@@ -98,6 +98,7 @@ suite('viEditorSession', () => {
 
     await fs.promises.writeFile(entry.artifacts.fpImage, Buffer.from('x'));
     await fs.promises.writeFile(entry.artifacts.bdImage, Buffer.from('y'));
+    await cache.markPreviewArtifactsCurrent(entry, viPath, ['fp', 'bd']);
     await cache.writeProps(entry, {
       _cacheVersion: 1,
       vi_path: viPath,
@@ -369,5 +370,75 @@ suite('viEditorSession', () => {
     assert.ok(before);
     assert.ok(after);
     assert.notStrictEqual(before, after);
+  });
+
+  test('savePropsAndReload: reuses preview cache when only props change', async () => {
+    const tmp = createTempDir('lv-vi-session-');
+    const viPath = path.join(tmp, 'demo.vi');
+    fs.writeFileSync(viPath, Buffer.from('demo'));
+
+    const cache = new ViCache(path.join(tmp, 'cache'));
+    const initialEntry = await cache.entryForFile(viPath);
+    await cache.ensureEntry(initialEntry, viPath);
+    await fs.promises.writeFile(initialEntry.artifacts.fpImage, Buffer.from('fp'));
+    await fs.promises.writeFile(initialEntry.artifacts.bdImage, Buffer.from('bd'));
+    await cache.markPreviewArtifactsCurrent(initialEntry, viPath, ['fp', 'bd']);
+    await cache.writeProps(initialEntry, {
+      _cacheVersion: 1,
+      vi_path: viPath,
+      lv_version: null,
+      dynamic_props_loaded: true,
+      props: {
+        Description: { ok: true, type: 'String', value: 'cached', error: null, loaded: true },
+      },
+    });
+
+    let exports = 0;
+    const runtime: Partial<ViEditorSessionRuntime> = {
+      readStaticViProps: async (p) => envelope({ viPath: p, dynamicPropsLoaded: true }),
+      hasReusableLabVIEWConnection: async () => false,
+      exportViPanelImages: async () => {
+        exports += 1;
+        return {};
+      },
+      readViProps: async (p) => envelope({ viPath: p, dynamicPropsLoaded: true }),
+      writeViProps: async (p) => {
+        await fs.promises.appendFile(p, 'changed');
+        return envelope({
+          viPath: p,
+          dynamicPropsLoaded: true,
+          saved: true,
+          saveError: '',
+          props: {
+            Description: { ok: true, type: 'String', value: 'updated', error: null, loaded: true },
+          },
+        });
+      },
+    };
+
+    const { deps, messages } = createDeps(runtime);
+    const session = new ViEditorSession(
+      createDocument(viPath),
+      createPanel(messages),
+      cache,
+      {} as unknown as ScriptPaths,
+      {},
+      () => 'both',
+      async () => {},
+      deps,
+    );
+
+    await session.initialize();
+    await waitForIdle(session);
+    exports = 0;
+
+    const saveMessage: InboundMessage = { type: 'saveProps', updates: { Description: 'x' } };
+    await session.handleMessage(saveMessage);
+    await waitForIdle(session);
+
+    assert.strictEqual(exports, 0, 'preview export should not rerun for property-only saves');
+    const states = messages.filter(isOutboundState).map((state) => state as unknown as Record<string, unknown>);
+    const last = states[states.length - 1];
+    assert.deepStrictEqual(last['loading'], { fp: false, bd: false, props: false });
   });
 });

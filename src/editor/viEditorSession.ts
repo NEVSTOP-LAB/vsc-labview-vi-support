@@ -279,7 +279,7 @@ export class ViEditorSession {
     }
 
     let autoLoadDynamicProps = await this.shouldAutoLoadDynamicProps(cachedProps);
-    const initialLoading = this.buildLoadingState(entry, refreshDynamicProps || autoLoadDynamicProps);
+    const initialLoading = await this.buildLoadingState(entry, refreshDynamicProps || autoLoadDynamicProps);
 
     // Initial state: whatever is on disk right now.
     await this.pushState({
@@ -401,6 +401,16 @@ export class ViEditorSession {
         this.scripts,
         this.runtimeOptions,
       );
+      const refreshedPanels: Array<'fp' | 'bd'> = [];
+      if (requestedPanels.fp && this.cache.has(entry, 'fpImage')) {
+        refreshedPanels.push('fp');
+      }
+      if (requestedPanels.bd && this.cache.has(entry, 'bdImage')) {
+        refreshedPanels.push('bd');
+      }
+      if (refreshedPanels.length > 0) {
+        await this.cache.markPreviewArtifactsCurrent(entry, this.document.uri.fsPath, refreshedPanels);
+      }
     } catch (err) {
       if (err instanceof UnsupportedPreviewExportError) {
         this.previewExportDisabledReason = err.message;
@@ -477,6 +487,7 @@ export class ViEditorSession {
 
     this.currentEntry = entry;
     await this.cache.ensureEntry(entry, this.document.uri.fsPath);
+    await this.cache.markPreviewArtifactsCurrent(entry, this.document.uri.fsPath, ['fp', 'bd']);
 
     let mergedEnv = env;
     let baseEnvelope = cachedBeforeSave;
@@ -493,7 +504,7 @@ export class ViEditorSession {
 
     await this.cache.writeProps(entry, toCachedPropsJson(mergedEnv));
 
-    const initialLoading = this.buildLoadingState(entry, false);
+    const initialLoading = await this.buildLoadingState(entry, false);
     await this.pushState({
       fpImage: this.cache.has(entry, 'fpImage') ? entry.artifacts.fpImage : null,
       bdImage: this.cache.has(entry, 'bdImage') ? entry.artifacts.bdImage : null,
@@ -527,14 +538,16 @@ export class ViEditorSession {
     }
   }
 
-  private buildLoadingState(
+  private async buildLoadingState(
     entry: CacheEntry,
     propsLoading: boolean,
-  ): { fp: boolean; bd: boolean; props: boolean } {
+  ): Promise<{ fp: boolean; bd: boolean; props: boolean }> {
     const previewVisible = this.isPreviewVisible();
+    const fpReady = previewVisible ? await this.cache.hasFreshPreview(entry, 'fp') : false;
+    const bdReady = previewVisible ? await this.cache.hasFreshPreview(entry, 'bd') : false;
     return {
-      fp: previewVisible && !this.cache.has(entry, 'fpImage'),
-      bd: previewVisible && !this.cache.has(entry, 'bdImage'),
+      fp: previewVisible && !fpReady,
+      bd: previewVisible && !bdReady,
       props: propsLoading,
     };
   }
@@ -562,7 +575,7 @@ export class ViEditorSession {
       bdImage: this.cache.has(entry, 'bdImage') ? entry.artifacts.bdImage : null,
       props: this.buildLoadingPropsEnvelope(),
       errors: [],
-      loading: this.buildLoadingState(entry, true),
+      loading: await this.buildLoadingState(entry, true),
     });
   }
 
