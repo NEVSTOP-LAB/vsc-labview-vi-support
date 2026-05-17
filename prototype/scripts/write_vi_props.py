@@ -45,9 +45,8 @@ from read_vi_props import (  # type: ignore
     format_connection_report,
 )
 
-_WRITE_WORKER_SCRIPT = os.path.join(
-    os.path.dirname(__file__), "write_vi_props_worker.vbs"
-)
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+_WRITE_WORKER_SCRIPT = os.path.join(_REPO_ROOT, "workers", "write_vi_props_worker.vbs")
 
 # 与 worker 中 writableMeta 同步：可写属性名 -> ("type", "category")
 # category: "vi" 表示 vi.<Name>

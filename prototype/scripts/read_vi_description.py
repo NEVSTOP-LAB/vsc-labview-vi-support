@@ -56,7 +56,8 @@ _DEFAULT_WORKER_TIMEOUT_SECONDS = 45
 _PE_MACHINE_I386 = 0x014C
 _PE_MACHINE_AMD64 = 0x8664
 
-_WORKER_SCRIPT = os.path.join(os.path.dirname(__file__), "read_vi_description_worker.vbs")
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+_WORKER_SCRIPT = os.path.join(_REPO_ROOT, "workers", "read_vi_description_worker.vbs")
 
 
 # ---------------------------------------------------------------------------
