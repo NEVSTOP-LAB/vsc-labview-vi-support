@@ -5,7 +5,10 @@ import * as path from 'path';
 
 import { ViCache } from '../../cache/viCache';
 import { ViEditorSession, type ViEditorSessionDeps, type ViEditorSessionRuntime } from '../../editor/viEditorSession';
+import type { ViDocument } from '../../editor/viEditorProvider';
+import type { InboundMessage, OutboundState } from '../../editor/viWebviewProtocol';
 import type { PropsJsonEnvelope } from '../../scripts/propsParser';
+import type { ScriptPaths } from '../../scripts/scriptPaths';
 
 function createTempDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -72,6 +75,17 @@ async function waitForIdle(session: ViEditorSession): Promise<void> {
   await (session as unknown as { _loadChain: Promise<void> })._loadChain;
 }
 
+function createDocument(viPath: string): ViDocument {
+  return { uri: { fsPath: viPath } } as unknown as ViDocument;
+}
+
+function isOutboundState(message: unknown): message is OutboundState {
+  if (typeof message !== 'object' || message === null) {
+    return false;
+  }
+  return (message as Record<string, unknown>)['type'] === 'state';
+}
+
 suite('viEditorSession', () => {
   test('loadAndPush: cache hit avoids LabVIEW dynamic calls', async () => {
     const tmp = createTempDir('lv-vi-session-');
@@ -122,10 +136,10 @@ suite('viEditorSession', () => {
 
     const { deps, messages } = createDeps(runtime);
     const session = new ViEditorSession(
-      { uri: { fsPath: viPath } } as any,
-      createPanel(messages) as any,
+      createDocument(viPath),
+      createPanel(messages),
       cache,
-      {} as any,
+      {} as unknown as ScriptPaths,
       {},
       () => 'both',
       async () => {},
@@ -139,9 +153,10 @@ suite('viEditorSession', () => {
     assert.strictEqual(dynamicReads, 0);
     assert.strictEqual(exports, 0);
 
-    const states = messages.filter((m) => (m as any).type === 'state') as any[];
+    const states = messages.filter(isOutboundState);
     assert.ok(states.length >= 1);
-    assert.deepStrictEqual(states[states.length - 1].loading, { fp: false, bd: false, props: false });
+    const last = states[states.length - 1] as unknown as Record<string, unknown>;
+    assert.deepStrictEqual(last['loading'], { fp: false, bd: false, props: false });
   });
 
   test('loadAndPush: cache miss triggers static+panels+dynamic pipeline', async () => {
@@ -193,10 +208,10 @@ suite('viEditorSession', () => {
 
     const { deps, messages } = createDeps(runtime);
     const session = new ViEditorSession(
-      { uri: { fsPath: viPath } } as any,
-      createPanel(messages) as any,
+      createDocument(viPath),
+      createPanel(messages),
       cache,
-      {} as any,
+      {} as unknown as ScriptPaths,
       {},
       () => 'both',
       async () => {},
@@ -210,9 +225,9 @@ suite('viEditorSession', () => {
     assert.strictEqual(exports, 1);
     assert.strictEqual(dynamicReads, 1);
 
-    const states = messages.filter((m) => (m as any).type === 'state') as any[];
-    assert.ok(states.some((s) => s.loading?.props === true));
-    assert.strictEqual(states[states.length - 1].props.dynamicPropsLoaded, true);
+    const states = messages.filter(isOutboundState).map((s) => s as unknown as Record<string, unknown>);
+    assert.ok(states.some((s) => (s['loading'] as Record<string, unknown> | undefined)?.['props'] === true));
+    assert.strictEqual((states[states.length - 1]['props'] as Record<string, unknown>)['dynamicPropsLoaded'], true);
   });
 
   test('loadDynamicProps: deduplicates repeated clicks', async () => {
@@ -241,10 +256,10 @@ suite('viEditorSession', () => {
 
     const { deps, messages } = createDeps(runtime);
     const session = new ViEditorSession(
-      { uri: { fsPath: viPath } } as any,
-      createPanel(messages) as any,
+      createDocument(viPath),
+      createPanel(messages),
       cache,
-      {} as any,
+      {} as unknown as ScriptPaths,
       {},
       () => 'both',
       async () => {},
@@ -254,8 +269,9 @@ suite('viEditorSession', () => {
     await session.initialize();
     await waitForIdle(session);
 
-    void session.handleMessage({ type: 'loadDynamicProps' } as any);
-    void session.handleMessage({ type: 'loadDynamicProps' } as any);
+    const loadDynamic: InboundMessage = { type: 'loadDynamicProps' };
+    void session.handleMessage(loadDynamic);
+    void session.handleMessage(loadDynamic);
     await waitForIdle(session);
 
     assert.strictEqual(dynamicReads, 1);
@@ -285,18 +301,18 @@ suite('viEditorSession', () => {
 
     const { deps, messages } = createDeps(runtime);
     const session = new ViEditorSession(
-      { uri: { fsPath: viPath } } as any,
-      createPanel(messages) as any,
+      createDocument(viPath),
+      createPanel(messages),
       cache,
-      {} as any,
+      {} as unknown as ScriptPaths,
       {},
       () => 'table-only',
       async () => {},
       deps,
     );
 
-    (session as any).scheduleExternalFileReload();
-    (session as any).scheduleExternalFileReload();
+    (session as unknown as { scheduleExternalFileReload(): void }).scheduleExternalFileReload();
+    (session as unknown as { scheduleExternalFileReload(): void }).scheduleExternalFileReload();
     await new Promise((r) => setTimeout(r, 300));
     await waitForIdle(session);
 
@@ -331,10 +347,10 @@ suite('viEditorSession', () => {
 
     const { deps, messages } = createDeps(runtime);
     const session = new ViEditorSession(
-      { uri: { fsPath: viPath } } as any,
-      createPanel(messages) as any,
+      createDocument(viPath),
+      createPanel(messages),
       cache,
-      {} as any,
+      {} as unknown as ScriptPaths,
       {},
       () => 'table-only',
       async () => {},
@@ -343,11 +359,12 @@ suite('viEditorSession', () => {
 
     await session.initialize();
     await waitForIdle(session);
-    const before = (messages.filter((m) => (m as any).type === 'state') as any[]).slice(-1)[0]?.hash;
+    const before = (messages.filter(isOutboundState).slice(-1)[0] as unknown as Record<string, unknown> | undefined)?.['hash'];
 
-    await session.handleMessage({ type: 'saveProps', updates: { Description: 'x' } } as any);
+    const saveMessage: InboundMessage = { type: 'saveProps', updates: { Description: 'x' } };
+    await session.handleMessage(saveMessage);
     await waitForIdle(session);
-    const after = (messages.filter((m) => (m as any).type === 'state') as any[]).slice(-1)[0]?.hash;
+    const after = (messages.filter(isOutboundState).slice(-1)[0] as unknown as Record<string, unknown> | undefined)?.['hash'];
 
     assert.ok(before);
     assert.ok(after);
